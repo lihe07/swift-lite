@@ -73,7 +73,11 @@ function initOpenseagragon(el) {
     element: el,
     prefixUrl:
       "https://cdn.jsdelivr.net/npm/openseadragon@4.0/build/openseadragon/images/",
-    tileSources: "/api/detections/" + route.params.id + "/boxes.dzi",
+    tileSources:
+      "/api/detections/" +
+      route.params.id +
+      "/boxes.dzi?t=" +
+      data.value.modified_at,
   });
 }
 
