@@ -19,7 +19,7 @@ use actix_multipart::Multipart;
 use crossbeam::channel::{unbounded, Receiver, Sender};
 use futures::{StreamExt, TryStreamExt};
 use log::{error, info};
-use sqlx::{query::Query, sqlite::SqlitePoolOptions, SqlitePool};
+use sqlx::{sqlite::SqlitePoolOptions, SqlitePool};
 use swift_det_lib::DetectConfig;
 
 const STACK: usize = 16 * 1024 * 1024; // 16Mb
