@@ -314,6 +314,13 @@ async fn delete_detection(path: web::Path<uuid::Uuid>, data: Data<AppState>) -> 
     }
 }
 
+#[get("/editor/{id}")]
+async fn editor() -> impl Responder {
+    HttpResponse::Ok()
+        .content_type("text/html")
+        .body(DIR.get_file("index.html").unwrap().contents())
+}
+
 const WORKERS: u8 = 2;
 
 struct Task {
@@ -483,6 +490,7 @@ async fn main() -> std::io::Result<()> {
             .service(update_detection_remark)
             .service(create_detection)
             .service(delete_detection)
+            .service(editor)
             .service(ResourceFiles::new("/", map))
             .wrap(Logger::default())
     })
