@@ -2,3 +2,4 @@
 model.onnx
 data.db
 /detections
+.env

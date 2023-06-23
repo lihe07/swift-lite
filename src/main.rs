@@ -494,7 +494,7 @@ async fn main() -> std::io::Result<()> {
             .service(ResourceFiles::new("/", map))
             .wrap(Logger::default())
     })
-    .bind(("127.0.0.1", 8000))?
+    .bind(std::env::var("BIND").unwrap_or("127.0.0.1:8000".to_string()))?
     .run()
     .await
 }
