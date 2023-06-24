@@ -1,23 +1,32 @@
 <script setup>
-import { NDataTable, NButtonGroup, NButton, NText } from "naive-ui";
+import { NDataTable, NCard, NIcon, NButton, NText } from "naive-ui";
 import { useRouter } from "vue-router";
-import { h, ref } from "vue";
+import { h, reactive, ref } from "vue";
+
+import { ArrowSync20Filled } from "@vicons/fluent";
 
 const router = useRouter();
 
-const columns = [
-  {
-    title: "修改时间",
-    key: "modified_at",
-    render(row) {
-      // Parse Unix timestamp to human readable string
-      return new Date(row.modified_at).toLocaleString();
-    },
+const column_modified_at = reactive({
+  title: "修改时间",
+  key: "modified_at",
+  render(row) {
+    // Parse Unix timestamp to human readable string
+    return new Date(row.modified_at).toLocaleString();
   },
-  {
-    title: "数量",
-    key: "num",
-  },
+  sorter: true,
+  sortOrder: "descend",
+});
+
+const column_num = reactive({
+  title: "数量",
+  key: "num",
+  sorter: true,
+});
+
+const columns = ref([
+  column_modified_at,
+  column_num,
   {
     title: "备注",
     key: "remark",
@@ -50,7 +59,7 @@ const columns = [
       ];
     },
   },
-];
+]);
 
 function renderCell(value) {
   if (!value) {
@@ -63,20 +72,45 @@ const data = ref([]);
 
 const loading = ref(true);
 
-function fetchData() {
+const pagination = reactive({
+  page: 1,
+  pageSize: 10,
+  pageCount: 1,
+  prefix: ({ itemCount }) => `共 ${itemCount} 条`,
+});
+
+async function fetchData() {
   loading.value = true;
-  fetch("/api/detections")
-    .catch((err) => {
-      console.error(err);
-      loading.value = false;
-    })
-    .then((resp) => resp.json())
-    .then((resp) => {
-      console.log(resp);
-      if (resp.length) data.value = resp;
-      else data.value = [];
-      loading.value = false;
-    });
+  let sort_key = "modified_at";
+  let asc = false;
+
+  if (column_num.sortOrder) {
+    sort_key = "num";
+    asc = column_num.sortOrder === "ascend";
+  }
+
+  if (column_modified_at.sortOrder) {
+    sort_key = "modified_at";
+    asc = column_modified_at.sortOrder === "ascend";
+  }
+
+  const res = await fetch(
+    "/api/detections?" +
+      new URLSearchParams({
+        page: pagination.page,
+        page_size: pagination.pageSize,
+        sort_key,
+        asc,
+      })
+  );
+
+  const body = await res.json();
+  pagination.pageCount = ~~res.headers.get("pages");
+  pagination.itemCount = ~~res.headers.get("count");
+  console.log(body);
+  if (body.length) data.value = body;
+  else data.value = [];
+  loading.value = false;
 }
 
 fetchData();
@@ -89,10 +123,46 @@ function deleteDetection(id) {
 </script>
 
 <template>
-  <n-data-table
-    :columns="columns"
-    :data="data"
-    :render-cell="renderCell"
-    :loading="loading"
-  ></n-data-table>
+  <n-card title="最近的检测">
+    <template #header-extra>
+      <n-button circle @click="fetchData">
+        <template #icon>
+          <n-icon>
+            <ArrowSync20Filled />
+          </n-icon>
+        </template>
+      </n-button>
+    </template>
+
+    <n-data-table
+      remote
+      :columns="columns"
+      :row-key="(row) => row.id"
+      :data="data"
+      :render-cell="renderCell"
+      :loading="loading"
+      :pagination="pagination"
+      @update:page="
+        (page) => {
+          pagination.page = page;
+          fetchData();
+        }
+      "
+      @update:sorter="
+        (sorter) => {
+          console.log(sorter);
+          if (sorter.columnKey === 'modified_at') {
+            column_num.sortOrder = false;
+            column_modified_at.sorter = true;
+            column_modified_at.sortOrder = sorter.order;
+          } else {
+            column_modified_at.sortOrder = false;
+            column_num.sorter = true;
+            column_num.sortOrder = sorter.order;
+          }
+          fetchData();
+        }
+      "
+    ></n-data-table>
+  </n-card>
 </template>

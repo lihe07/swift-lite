@@ -63,9 +63,7 @@ function handleFinish({ event }) {
 
     <div class="space"></div>
 
-    <n-card title="最近的检测">
-      <RecentList></RecentList>
-    </n-card>
+    <RecentList></RecentList>
   </main>
 </template>
 

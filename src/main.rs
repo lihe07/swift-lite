@@ -116,16 +116,37 @@ async fn get_detection_origin(path: web::Path<uuid::Uuid>) -> impl Responder {
 }
 
 #[get("/api/detections")]
-async fn get_detections(data: Data<AppState>) -> impl Responder {
-    let detections = sqlx::query_as!(
-        models::Detection,
-        "SELECT * from detections ORDER by modified_at DESC"
-    )
+async fn get_detections(
+    data: Data<AppState>,
+    pagination: web::Query<models::PaginationAndSort>,
+) -> impl Responder {
+    if let Some(err) = pagination.validate() {
+        return HttpResponse::BadRequest().body(err.to_string());
+    }
+
+    let detections: Vec<models::Detection> = sqlx::query_as(&format!(
+        "SELECT * from detections ORDER by {} LIMIT ? OFFSET ?",
+        pagination.sort()
+    ))
+    .bind(pagination.limit())
+    .bind(pagination.offset())
     .fetch_all(&data.db)
     .await
     .unwrap();
 
-    HttpResponse::Ok().json(detections)
+    // Calculate total pages
+    let count = sqlx::query!("SELECT COUNT(*) as count FROM detections")
+        .fetch_one(&data.db)
+        .await
+        .unwrap()
+        .count;
+
+    let pages = (count as f64 / pagination.limit() as f64).ceil() as u32;
+
+    HttpResponse::Ok()
+        .append_header(("Pages", pages))
+        .append_header(("Count", count))
+        .json(detections)
 }
 
 static DEFAULT_CONFIG: DetectConfig = DetectConfig {
