@@ -113,9 +113,13 @@ onMounted(() => {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(remark),
-      }).then(() => {
-        setTimeout(msg.destroy, Math.max(0, 1000 - (Date.now() - t0)));
-      });
+      })
+        .then((res) => res.json())
+        .then((res) => {
+          res.params = JSON.parse(res.params);
+          data.value = res;
+          setTimeout(msg.destroy, Math.max(0, 1000 - (Date.now() - t0)));
+        });
     }
   }, 1000);
 
@@ -163,7 +167,8 @@ function updateParams() {
 }
 
 function download() {
-  const url = "/api/detections/" + route.params.id + "/boxes";
+  const url =
+    "/api/detections/" + route.params.id + "/boxes?t=" + data.value.modified_at;
   // Trigger download
   const a = document.createElement("a");
   a.href = url;

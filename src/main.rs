@@ -119,7 +119,7 @@ async fn get_detection_origin(path: web::Path<uuid::Uuid>) -> impl Responder {
 async fn get_detections(data: Data<AppState>) -> impl Responder {
     let detections = sqlx::query_as!(
         models::Detection,
-        "SELECT * from detections ORDER by modified_at"
+        "SELECT * from detections ORDER by modified_at DESC"
     )
     .fetch_all(&data.db)
     .await
@@ -217,8 +217,10 @@ async fn update_detection_params(
     .await
     {
         let params_string = serde_json::to_string(&params).unwrap();
-        sqlx::query("UPDATE detections SET params = ? WHERE id = ?")
+        let modified_at = chrono::Local::now().naive_local();
+        sqlx::query("UPDATE detections SET params = ?, modified_at = ? WHERE id = ?")
             .bind(&params_string)
+            .bind(&modified_at)
             .bind(&id)
             .execute(&data.db)
             .await
@@ -240,6 +242,7 @@ async fn update_detection_params(
                 .unwrap();
 
             old.params = params_string;
+            old.modified_at = modified_at;
             old.num = Some(num);
             HttpResponse::Ok().json(old)
         } else {
@@ -283,14 +286,17 @@ async fn update_detection_remark(
     .fetch_one(&data.db)
     .await
     {
-        sqlx::query("UPDATE detections SET remark = ? WHERE id = ?")
+        let modified_at = chrono::Local::now().naive_local();
+        sqlx::query("UPDATE detections SET remark = ?, modified_at = ? WHERE id = ?")
             .bind(&remark.0)
+            .bind(&modified_at)
             .bind(&id)
             .execute(&data.db)
             .await
             .unwrap();
 
         old.remark = Some(remark.0);
+        old.modified_at = modified_at;
         HttpResponse::Ok().json(old)
     } else {
         HttpResponse::NotFound().body("Not found")
