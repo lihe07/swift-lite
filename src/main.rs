@@ -89,8 +89,6 @@ async fn get_detection_boxes_tile(path: web::Path<(uuid::Uuid, String, String)>)
         .join(inner.1)
         .join(inner.2);
 
-    dbg!(&path);
-
     if path.exists() {
         HttpResponse::Ok()
             .content_type("image/jpeg")
