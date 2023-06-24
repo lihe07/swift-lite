@@ -161,6 +161,15 @@ function updateParams() {
     }
   });
 }
+
+function download() {
+  const url = "/api/detections/" + route.params.id + "/boxes";
+  // Trigger download
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "boxes.jpg";
+  a.click();
+}
 </script>
 
 <template>
@@ -197,9 +206,10 @@ function updateParams() {
           <div class="forms">
             <ParamsForm :data="data.params"></ParamsForm>
 
-            <n-button class="full-width" @click="updateParams()"
-              >重新检测</n-button
-            >
+            <div class="full-width">
+              <n-button @click="updateParams()">重新检测</n-button>
+              <n-button @click="download()">下载结果</n-button>
+            </div>
 
             <n-form-item label="备注">
               <n-input v-model:value="data.remark" placeholder="无"></n-input>
@@ -279,6 +289,11 @@ main {
 .full-width {
   width: 100%;
   margin-bottom: 1rem;
+  display: flex;
+  gap: 0.5rem;
+}
+.full-width button {
+  flex: 1;
 }
 .btn {
   display: none;
