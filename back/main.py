@@ -11,14 +11,17 @@ import psycopg2.extras
 import time
 import shutil
 import json as mjson
-from config import DB, MASTER
+from config import DB, MASTER, BASE
 
-conn = psycopg2.connect(DB, cursor_factory=psycopg2.extras.RealDictCursor)
 
-conn.autocommit = True
+def make_conn():
+    conn = psycopg2.connect(DB, cursor_factory=psycopg2.extras.RealDictCursor)
+    conn.autocommit = True
+    return conn
+
 
 # Ensure Table
-with conn.cursor() as c:
+with make_conn().cursor() as c:
     c.execute(
         """
         CREATE TABLE IF NOT EXISTS detections (id TEXT PRIMARY KEY, params TEXT, modified_at INTEGER, num INTEGER, remark TEXT, status TEXT)
@@ -76,10 +79,10 @@ class PredictionTask:
 
     @property
     def db(self):
-        return conn
+        return make_conn()
 
     def image_url(self):
-        return f"http://dev.imlihe.com:20000/api/detections/{self.id}/origin"
+        return f"{BASE}/api/detections/{self.id}/origin"
 
     def set_status(self, status):
         with self.db.cursor() as c:
@@ -147,6 +150,7 @@ class PredictionTask:
 
 @app.main_process_start
 async def demo_task(app: Sanic):
+    conn = make_conn()
     app.shared_ctx.queue = Queue()
     print("Main")
 
@@ -192,8 +196,7 @@ async def new_detection(request: Request):
         "threshold": 0.5,
         "iou": 0.5,
     }
-    # detect
-
+    conn = make_conn()
     # Write Database
     with conn.cursor() as c:
         c.execute(
@@ -245,6 +248,7 @@ async def modify_detection(request: Request, id: str):
     if not 0 <= params["iou"] <= 1:
         return json({"error": "iou should be within [0, 1]"}, 400)
 
+    conn = make_conn()
     # Modify detection
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as c:
         c.execute("SELECT * FROM detections WHERE id = %s", (id,))
@@ -284,6 +288,7 @@ async def modify_detection_remark(request: Request, id: str):
     # Modify Detection
     remark = request.json.get("remark", "")
 
+    conn = make_conn()
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as c:
         c.execute("SELECT * FROM detections WHERE id = %s", (id,))
         row = c.fetchone()
@@ -303,6 +308,7 @@ async def delete_detection(_, id: str):
     if os.path.exists(base):
         shutil.rmtree(base)
 
+    conn = make_conn()
     with conn.cursor() as c:
         c.execute("DELETE FROM detections WHERE id = %s", (id,))
 
@@ -310,6 +316,7 @@ async def delete_detection(_, id: str):
 
 
 def _get_detection(request: Request, id: str):
+    conn = make_conn()
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as c:
         c.execute("SELECT * FROM detections WHERE id = %s", (id,))
         row = c.fetchone()
@@ -352,6 +359,7 @@ async def get_detections(request: Request):
     size = int(request.args.get("size", 20))
     page = int(request.args.get("page", 1))
     # Sort in time order
+    conn = make_conn()
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as c:
         c.execute(
             "SELECT * FROM detections ORDER BY modified_at DESC LIMIT %s OFFSET %s",
