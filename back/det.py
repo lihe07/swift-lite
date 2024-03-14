@@ -8,14 +8,15 @@ import shutil
 
 sess = onnxruntime.InferenceSession("skyseg.onnx")
 
-def run_inference(onnx_session, image, threshold = 0.1):
+
+def run_inference(onnx_session, image, threshold=0.1):
     x = cv2.resize(image, (320, 320))
     x = np.array(x, dtype=np.float32)
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
     x = (x / 255 - mean) / std
     x = x.transpose(2, 0, 1)
-    x = x.reshape(-1, 3, 320, 320).astype('float32')
+    x = x.reshape(-1, 3, 320, 320).astype("float32")
 
     # Inference
     input_name = onnx_session.get_inputs()[0].name
@@ -32,7 +33,6 @@ def run_inference(onnx_session, image, threshold = 0.1):
     return result
 
 
-
 class DetParameters(BaseModel):
     is_pure_sky: bool = False
     sky_threshold: float = 0.1
@@ -40,7 +40,7 @@ class DetParameters(BaseModel):
     point_threshold: float = 0.2
 
 
-def create_dzi(dir): 
+def create_dzi(dir):
     im = os.path.join(dir, "merged.jpg")
     dzi = os.path.join(dir, "merged")
     files = os.path.join(dir, "merged_files")
@@ -69,7 +69,9 @@ def detect(params: DetParameters, dir: str):
         result = cv2.resize(result, (im.shape[1], im.shape[0]))
 
         if params.sky_erode > 0:
-            kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (params.sky_erode, params.sky_erode))
+            kernel = cv2.getStructuringElement(
+                cv2.MORPH_RECT, (params.sky_erode, params.sky_erode)
+            )
             result = cv2.erode(result, kernel)
 
     color_mask = np.zeros_like(im)
@@ -78,21 +80,23 @@ def detect(params: DetParameters, dir: str):
 
     cv2.imwrite(os.path.join(dir, "mask.png"), color_mask)
 
-
     # Apply BlackHat
     gray = cv2.cvtColor(im, cv2.COLOR_RGB2GRAY)
     kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
     filtered = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, kernel)
     # Convert to binary
     # filtered = cv2.threshold(filtered, 255 * params.point_threshold, 255, cv2.THRESH_BINARY)[1]
-    filtered = cv2.adaptiveThreshold(filtered, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+    filtered = cv2.adaptiveThreshold(
+        filtered, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2
+    )
 
     # Clean non-sky pixels
     filtered = cv2.bitwise_and(filtered, result)
 
     # Find Connected Components
     nb_components, output, stats, centroids = cv2.connectedComponentsWithStats(
-        filtered, connectivity=8)
+        filtered, connectivity=8
+    )
 
     with open(os.path.join(dir, "num"), mode="w") as f:
         f.write(str(nb_components))
@@ -119,7 +123,9 @@ def detect(params: DetParameters, dir: str):
 
     cv2.imwrite(os.path.join(dir, "boxes.png"), filtered)
 
-    cv2.imwrite(os.path.join(dir, "merged.jpg"), cv2.addWeighted(color_mask, 1, filtered, 1, 0))
+    cv2.imwrite(
+        os.path.join(dir, "merged.jpg"), cv2.addWeighted(color_mask, 1, filtered, 1, 0)
+    )
     create_dzi(dir)
 
     return nb_components

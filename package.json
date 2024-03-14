@@ -8,14 +8,15 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.2.47",
-    "vue-router": "^4.1.6"
+    "vue": "^3.4.21",
+    "vue-router": "^4.3.0"
   },
   "devDependencies": {
     "@vicons/fluent": "^0.12.0",
-    "@vitejs/plugin-vue": "^4.0.0",
-    "naive-ui": "^2.34.3",
-    "openseadragon": "^4.0.0",
-    "vite": "^4.1.4"
-  }
+    "@vitejs/plugin-vue": "^5.0.4",
+    "naive-ui": "^2.38.1",
+    "openseadragon": "^4.1.0",
+    "vite": "^5.1.6"
+  },
+  "type": "module"
 }

@@ -1,9 +1,9 @@
 <script setup>
 import { onMounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router";
-import {
+import { useRoute, useRouter } from "vue-router"; import {
   NPageHeader,
   NButton,
+  NButtonGroup,
   NSpin,
   NText,
   NEl,
@@ -21,29 +21,21 @@ import OpenSeadragon from "openseadragon";
 const route = useRoute();
 const router = useRouter();
 
-const data = ref({});
-const loading = ref(true);
-
-fetch(`/api/detections/${route.params.id}`)
-  .then((res) => res.json())
-  .then((res) => {
-    if (res.error) {
-      router.push("/404");
-      return;
-    }
-    data.value = res;
-    loading.value = false;
-  });
 
 const showForms = ref(false);
 
+function open(url) {
+  window.open(url);
+}
+
 let viewer;
 function initOpenseagragon(el) {
+  if (viewer) return;
+
   viewer = OpenSeadragon({
     element: el,
     prefixUrl:
       "https://cdn.jsdelivr.net/npm/openseadragon@4.0/build/openseadragon/images/",
-    tileSources: "/api/detections/" + route.params.id + "/merged.dzi",
   });
 }
 
@@ -53,76 +45,112 @@ function onResize() {
   }
 }
 
+const data = ref({});
+const loading = ref(true);
+
 let lastParams = null;
 let lastRemark = null;
-let updating = false;
 
-onMounted(() => {
+async function fetcher() {
+  const res = await fetch(`/api/detections/${route.params.id}`);
+  const j = await res.json();
+  if (j.error) {
+    router.push("/");
+    return;
+  }
+  data.value = j;
+  loading.value = false;
+}
+
+async function updator() {
+  const params = JSON.stringify(data.value.params);
+  if (lastParams !== params) {
+    lastParams = params;
+    await updateParams(data.value.params);
+  }
+
+  const remark = data.value.remark;
+  if (lastRemark !== remark) {
+    lastRemark = remark;
+    await fetch("/api/detections/" + route.params.id + "/remark", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ remark }),
+    });
+
+  }
+
+  setTimeout(updator, 1000);
+}
+
+onMounted(async () => {
   window.addEventListener("resize", onResize);
   onResize();
 
-  const updator = setInterval(() => {
-    const params = JSON.stringify(data.value.params);
-    if (lastParams !== params) {
-      if (lastParams === null) {
-        lastParams = params;
-        return;
-      }
-      lastParams = params;
-      if (!updating) {
-        updating = true;
-        updateParams(data.value.params);
-      }
-    }
+  await fetcher();
+  lastParams = JSON.stringify(data.value.params);
+  lastRemark = data.value.remark;
 
-    const remark = data.value.remark;
-    if (lastRemark !== remark) {
-      if (lastRemark === null) {
-        lastRemark = remark;
-        return;
-      }
-      lastRemark = remark;
-      fetch("/api/detections/" + route.params.id + "/remark", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ remark }),
-      });
-    }
-  }, 1000);
+  await pooler();
+
+  viewer.open({
+    type: "image",
+    url: "/api/detections/" + route.params.id + "/windows?t=" + Date.now(),
+  });
+
+  updator();
 
   return () => {
     window.removeEventListener("resize", onResize);
-    clearInterval(updator);
   };
 });
 
 let anim = ref(null);
 const lastNumber = ref(0);
+const imageSpin = ref(false);
 
-function updateParams(params) {
+let updating = false;
+
+async function pooler() {
+  while (data.value.status !== "done") {
+    imageSpin.value = true;
+    await fetcher();
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+  imageSpin.value = false;
+}
+
+async function updateParams(params) {
+  if (updating) return;
+  updating = true;
+
   console.log("update params", params);
-  viewer.close();
-  fetch("/api/detections/" + route.params.id + "/params", {
+
+  const res = await fetch("/api/detections/" + route.params.id + "/params", {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
     },
     body: JSON.stringify(params),
-  })
-    .then((res) => res.json())
-    .then((res) => {
-      console.log("ok");
-      console.log(res.num);
-      data.value.num = res.num;
-      // Reload viewer
-      viewer.open(
-        "/api/detections/" + route.params.id + "/merged.dzi?t=" + Date.now()
-      );
-      updating = false;
-      anim.value.play();
-    });
+  });
+  const j = await res.json();
+
+  data.value = j;
+
+  // Long polling
+  //
+  await pooler();
+
+  console.log("ok");
+  // Reload viewer
+  viewer.open({
+    type: "image",
+    url: "/api/detections/" + route.params.id + "/windows?t=" + Date.now(),
+  });
+  updating = false;
+  anim.value.play();
 }
 </script>
 
@@ -132,28 +160,16 @@ function updateParams(params) {
       <n-text depth="3">如果长时间未加载，请刷新页面</n-text>
     </template>
     <main v-if="!loading">
-      <n-el
-        tag="div"
-        class="params"
-        style="
+      <n-el tag="div" class="params" style="
           background-color: var(--card-color);
           transition: background-color 0.3s var(--cubic-bezier-ease-in-out);
-        "
-      >
-        <n-page-header
-          @back="router.push('/')"
-          title="Swift Lite"
-          subtitle="编辑器"
-        >
+        ">
+        <n-page-header @back="router.push('/')" title="Swift Lite" subtitle="编辑器">
           <template #extra>
             <!-- <n-button>刷新</n-button> -->
             <n-h3 style="margin: 0">
-              <n-number-animation
-                ref="anim"
-                :from="lastNumber"
-                :to="data.num"
-                @finish="lastNumber = data.num"
-              ></n-number-animation>
+              <n-number-animation ref="anim" :from="lastNumber" :to="data.num"
+                @finish="lastNumber = data.num"></n-number-animation>
               只
             </n-h3>
           </template>
@@ -166,6 +182,15 @@ function updateParams(params) {
             <n-form-item label="备注">
               <n-input v-model:value="data.remark" placeholder="无"></n-input>
             </n-form-item>
+
+            <n-button-group>
+              <n-button @click="() => open(`/api/detections/${route.params.id}/origin`)">下载原图</n-button>
+              <n-button @click="() => open(`/api/detections/${route.params.id}/windows`)">下载标注</n-button>
+              <n-button @click="() => open(`/api/detections/${route.params.id}/boxes`)">下载标注 (无窗口)</n-button>
+
+
+
+            </n-button-group>
           </div>
         </n-collapse-transition>
 
@@ -173,12 +198,10 @@ function updateParams(params) {
           <n-button circle secondary @click="showForms = !showForms">
             <template #icon>
               <n-icon>
-                <ArrowDown16Filled
-                  :style="{
-                    transform: showForms ? 'rotate(180deg)' : 'rotate(0)',
-                    transition: 'transform 0.3s',
-                  }"
-                />
+                <ArrowDown16Filled :style="{
+    transform: showForms ? 'rotate(180deg)' : 'rotate(0)',
+    transition: 'transform 0.3s',
+  }" />
               </n-icon>
             </template>
           </n-button>
@@ -186,7 +209,15 @@ function updateParams(params) {
       </n-el>
 
       <div class="image">
-        <div class="layers" :ref="initOpenseagragon"></div>
+        <n-spin style="width: 100%; height: 100%;" :show="imageSpin">
+          <div class="layers" :ref="initOpenseagragon"></div>
+          <template #description>
+            <n-text depth="3" v-if="data.status === 'queue'">排队中...
+              <span v-if="data.queue && data.queue > 0">第 {{ data.queue }} 位</span>
+            </n-text>
+            <n-text depth="3" v-else-if="data.status === 'processing'">处理中...</n-text>
+          </template>
+        </n-spin>
       </div>
     </main>
     <main v-else></main>
@@ -220,23 +251,25 @@ main {
 .forms {
   margin-top: 2rem;
 }
+
 .image {
   flex-grow: 1;
   width: 100%;
   overflow: hidden;
   min-height: 10rem;
+  position: relative;
 }
 
 .layers {
-  position: relative;
   width: 100%;
-  height: 100%;
+  height: 100vh;
 }
 
 @media (max-width: 768px) {
   main {
     flex-direction: column;
   }
+
   .params {
     width: 100%;
     box-sizing: border-box;

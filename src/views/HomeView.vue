@@ -24,6 +24,12 @@ const router = useRouter();
 function handleFinish({ event }) {
   router.push("/editor/" + JSON.parse(event.target.response).id);
 }
+
+function handleError({ event }) {
+  console.log("error", event);
+}
+
+
 </script>
 
 <template>
@@ -41,7 +47,7 @@ function handleFinish({ event }) {
     </div>
 
     <n-card title="新的检测">
-      <n-upload action="/api/detections" @finish="handleFinish">
+      <n-upload action="/api/detections" @finish="handleFinish" @error="handleError">
         <n-upload-dragger>
           <div style="margin: 12px 0">
             <n-icon size="48" :depth="3">
