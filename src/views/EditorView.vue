@@ -25,6 +25,7 @@ const router = useRouter();
 const showForms = ref(false);
 
 function open(url) {
+  url = url + "?t=" + Date.now();
   window.open(url);
 }
 
