@@ -21,8 +21,7 @@ conn.autocommit = True
 with conn.cursor() as c:
     c.execute(
         """
-        CREATE TABLE IF NOT EXISTS detections 
-        (id TEXT PRIMARY KEY, params TEXT, modified_at INTEGER, num INTEGER, remark TEXT, status TEXT)
+        CREATE TABLE IF NOT EXISTS detections (id TEXT PRIMARY KEY, params TEXT, modified_at INTEGER, num INTEGER, remark TEXT, status TEXT)
         """
     )
 
@@ -345,7 +344,7 @@ def get_detection_origin_image(_, id: str, im: str):
     if not os.path.exists(path):
         return json({"error": "Not Found"}, 404)
 
-    return file(path)
+    return file(path, max_age=2629746)
 
 
 @api.get("/detections")
