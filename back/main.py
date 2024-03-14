@@ -1,5 +1,5 @@
 from multiprocessing import Queue
-from sanic import Sanic, response, json, file, Blueprint, Request
+from sanic import Sanic, json, file, Blueprint, Request
 
 import uuid
 import os
@@ -11,9 +11,7 @@ import psycopg2.extras
 import time
 import shutil
 import json as mjson
-
-
-DB = "postgresql://postgres:password@localhost:5432/swift"
+from config import DB, MASTER
 
 conn = psycopg2.connect(DB, cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -153,7 +151,7 @@ async def demo_task(app: Sanic):
     app.shared_ctx.queue = Queue()
     print("Main")
 
-    p = master.Pool(("0.0.0.0", 12345), app.shared_ctx.queue)
+    p = master.Pool(MASTER, app.shared_ctx.queue)
     p.start()
 
     # find all queue tasks
@@ -365,11 +363,6 @@ async def get_detections(request: Request):
     print(rows)
 
     return json(rows)
-
-
-@app.get("/editor/{id}")
-def spa(_):
-    return file("./dist/index.html")
 
 
 app.blueprint(api)

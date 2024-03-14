@@ -14,7 +14,7 @@ HAS_CUDA = torch.cuda.is_available()
 
 INPUT_SIZE = (640, 640)
 
-MASTER = "8.130.162.255:12345"
+MASTER = "back.bwrrc.org.cn:12345"
 
 MODEL = "/opt/data.db"
 

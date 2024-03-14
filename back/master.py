@@ -147,7 +147,6 @@ class Worker(threading.Thread):
 
 class Pool(threading.Thread):
     workers = []
-    bind = ("0.0.0.0", 12345)
 
     def __init__(self, bind: tuple, q: Queue):
         self.bind = bind

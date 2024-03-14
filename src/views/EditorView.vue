@@ -187,9 +187,6 @@ async function updateParams(params) {
               <n-button @click="() => open(`/api/detections/${route.params.id}/origin`)">下载原图</n-button>
               <n-button @click="() => open(`/api/detections/${route.params.id}/windows`)">下载标注</n-button>
               <n-button @click="() => open(`/api/detections/${route.params.id}/boxes`)">下载标注 (无窗口)</n-button>
-
-
-
             </n-button-group>
           </div>
         </n-collapse-transition>
