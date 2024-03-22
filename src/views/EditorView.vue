@@ -37,6 +37,7 @@ function initOpenseagragon(el) {
     element: el,
     prefixUrl:
       "https://cdn.jsdelivr.net/npm/openseadragon@4.0/build/openseadragon/images/",
+    preserveViewport: true
   });
 }
 
@@ -64,12 +65,6 @@ async function fetcher() {
 }
 
 async function updator() {
-  const params = JSON.stringify(data.value.params);
-  if (lastParams !== params) {
-    lastParams = params;
-    await updateParams(data.value.params);
-  }
-
   const remark = data.value.remark;
   if (lastRemark !== remark) {
     lastRemark = remark;
@@ -82,6 +77,15 @@ async function updator() {
     });
 
   }
+
+  const params = JSON.stringify(data.value.params);
+  if (lastParams !== params) {
+    lastParams = params;
+    await updateParams(data.value.params);
+  } else {
+    await pooler();
+  }
+
 
   setTimeout(updator, 1000);
 }
@@ -115,6 +119,7 @@ const imageSpin = ref(false);
 let updating = false;
 
 async function pooler() {
+  await fetcher();
   while (data.value.status !== "done") {
     imageSpin.value = true;
     await fetcher();
@@ -178,10 +183,10 @@ async function updateParams(params) {
 
         <n-collapse-transition :show="showForms">
           <div class="forms">
-            <ParamsForm :data="data.params"></ParamsForm>
+            <ParamsForm :data="data.params" :disabled="data.status !== 'done'"></ParamsForm>
 
             <n-form-item label="备注">
-              <n-input v-model:value="data.remark" placeholder="无"></n-input>
+              <n-input v-model:value="data.remark" placeholder="无" :disabled="data.status !== 'done'"></n-input>
             </n-form-item>
 
             <n-button-group>

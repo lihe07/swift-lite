@@ -72,6 +72,7 @@ function handleError({ event }) {
     <n-card title="最近的检测">
       <RecentList></RecentList>
     </n-card>
+
   </main>
 </template>
 
@@ -95,6 +96,7 @@ main {
   justify-content: space-between;
   /* margin-bottom: 1rem; */
 }
+
 .space {
   height: 1rem;
 }

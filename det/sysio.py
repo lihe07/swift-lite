@@ -127,6 +127,8 @@ def receive_lengeth(sock: socket.socket, length: int):
 def main():
     # connect to master
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(30)  # 30s, retry
+
     host, port = MASTER.split(":")
     port = int(port)
     s.connect((host, port))

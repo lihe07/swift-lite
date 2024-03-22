@@ -15,6 +15,12 @@ const columns = [
     },
   },
   {
+    title: "状态",
+    render(row) {
+      return { done: "完成", queue: "排队中", processing: "处理中" }[row.status];
+    },
+  },
+  {
     title: "数量",
     key: "num",
   },
@@ -89,10 +95,5 @@ function deleteDetection(id) {
 </script>
 
 <template>
-  <n-data-table
-    :columns="columns"
-    :data="data"
-    :render-cell="renderCell"
-    :loading="loading"
-  ></n-data-table>
+  <n-data-table :columns="columns" :data="data" :render-cell="renderCell" :loading="loading"></n-data-table>
 </template>

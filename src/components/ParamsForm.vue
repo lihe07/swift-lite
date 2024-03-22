@@ -2,7 +2,7 @@
 import { NForm, NFormItem, NSwitch, NSlider, NInputNumber, NText } from "naive-ui";
 import LazySlider from "./LazySlider.vue";
 
-const props = defineProps(["data"]);
+const props = defineProps(["data", "disabled"]);
 
 function toggleTiling(e) {
   console.log(e);
@@ -11,7 +11,7 @@ function toggleTiling(e) {
 </script>
 
 <template>
-  <div>
+  <n-form :disabled="props.disabled">
 
     <n-text tag="h2" depth="2" class="hide-on-mobile">检测器参数</n-text>
 
@@ -51,7 +51,7 @@ function toggleTiling(e) {
 
       <LazySlider v-model:value="props.data.iou" :step="0.01" :min="0" :max="1"></LazySlider>
     </n-form-item>
-  </div>
+  </n-form>
 </template>
 
 <style scoped>

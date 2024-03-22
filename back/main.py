@@ -191,9 +191,9 @@ async def new_detection(request: Request):
 
     params = {
         "tiling": True,
-        "window_size": 0.5,
+        "window_size": 0.3,
         "overlap": 0.1,
-        "threshold": 0.5,
+        "threshold": 0.3,
         "iou": 0.5,
     }
     conn = make_conn()
@@ -256,6 +256,10 @@ async def modify_detection(request: Request, id: str):
 
     if row is None:
         return json({"error": "Not Found"}, 404)
+
+    if row["status"] != "done":
+        # No change
+        return _get_detection(request, id)
 
     row["params"] = mjson.loads(row["params"])
     old_params = row["params"]
