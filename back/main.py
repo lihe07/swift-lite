@@ -1,7 +1,7 @@
-import asyncio
 from multiprocessing import Queue
 from sanic import Sanic, json, file, Blueprint, Request
 
+import threading
 import uuid
 import os
 import cv2
@@ -14,6 +14,13 @@ import shutil
 import json as mjson
 from config import DB, MASTER, BASE
 import socketio
+import aiofiles
+
+
+PIPE = "/tmp/swift-pipe"
+
+if not os.path.exists(PIPE):
+    os.mkfifo(PIPE)
 
 
 def make_conn():
@@ -100,17 +107,48 @@ def _update_detection(id, num=None, status=None, remark=None, params=None):
 
     with db.cursor() as c:
         c.execute(sql, vars)
-        c.execute("SELECT * FROM detections WHERE id = %s", (id,))
-        row = c.fetchone()
+
+    db.commit()
 
     print(sql, vars)
-    row["params"] = mjson.loads(row["params"])
 
-    asyncio.ensure_future(sio.emit("update_detection", row, room=id))
+    # write to pipe
+    with open(PIPE, "w") as f:
+        f.write(id + "\n")
+
+
+@app.before_server_start
+async def emitter(app: Sanic, loop):
+    async def _emitter():
+        while True:
+            # read from pipe, asyncio
+            async with aiofiles.open(PIPE, "r") as f:
+                id = await f.readline()
+                id = id.strip()
+                if not id:
+                    continue
+
+            print("Emit", id)
+            db = make_conn()
+            with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as c:
+                c.execute("SELECT * FROM detections WHERE id = %s", (id,))
+                row = c.fetchone()
+
+            if row is None:
+                continue
+
+            row["params"] = mjson.loads(row["params"])
+
+            print("Emit", row)
+
+            await sio.emit("update_detection", row, room=id)
+
+    sio.start_background_task(_emitter)
 
 
 @sio.on("join")
 async def join(sid, detection_id):
+    print(threading.current_thread())
     await sio.enter_room(sid, detection_id)
 
 
