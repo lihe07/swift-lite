@@ -20,7 +20,7 @@ function toggleTiling(e) {
       <n-switch v-model:value="props.data.tiling"></n-switch>
     </n-form-item>
 
-    <n-form :disabled="!props.data.tiling">
+    <n-form :disabled="!props.data.tiling || props.disabled">
       <n-form-item label="窗口大小">
         <LazyNumber style="width: 7rem; margin-right: 1rem" :show-button="false" v-model:value="props.data.window_size"
           :step="0.01" :min="0" :max="1"></LazyNumber>
