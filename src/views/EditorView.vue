@@ -18,11 +18,16 @@ import ParamsForm from "@/components/ParamsForm.vue";
 import { ArrowDown16Filled } from "@vicons/fluent";
 import OpenSeadragon from "openseadragon";
 
+import { io } from "socket.io-client";
+
 const route = useRoute();
 const router = useRouter();
-
-
 const showForms = ref(false);
+
+const socket = io({
+  path: "/api/ws",
+  addTrailingSlash: false
+})
 
 function open(url) {
   url = url + "?t=" + Date.now();
@@ -39,6 +44,11 @@ function initOpenseagragon(el) {
       "https://cdn.jsdelivr.net/npm/openseadragon@4.0/build/openseadragon/images/",
     preserveViewport: true
   });
+
+  viewer.open({
+    type: "image",
+    url: "/api/detections/" + route.params.id + "/windows?t=" + Date.now(),
+  });
 }
 
 function onResize() {
@@ -53,16 +63,6 @@ const loading = ref(true);
 let lastParams = null;
 let lastRemark = null;
 
-async function fetcher() {
-  const res = await fetch(`/api/detections/${route.params.id}`);
-  const j = await res.json();
-  if (j.error) {
-    router.push("/");
-    return;
-  }
-  data.value = j;
-  loading.value = false;
-}
 
 async function updator() {
   const remark = data.value.remark;
@@ -82,10 +82,7 @@ async function updator() {
   if (lastParams !== params) {
     lastParams = params;
     await updateParams(data.value.params);
-  } else {
-    await pooler();
   }
-
 
   setTimeout(updator, 1000);
 }
@@ -94,43 +91,59 @@ onMounted(async () => {
   window.addEventListener("resize", onResize);
   onResize();
 
-  await fetcher();
+  const res = await fetch(`/api/detections/${route.params.id}`);
+  const j = await res.json();
+  if (j.error) {
+    router.push("/");
+    return;
+  }
+  data.value = j;
+  loading.value = false;
+
+  // Enter room
+
+
   lastParams = JSON.stringify(data.value.params);
   lastRemark = data.value.remark;
 
-  await pooler();
 
-  viewer.open({
-    type: "image",
-    url: "/api/detections/" + route.params.id + "/windows?t=" + Date.now(),
-  });
 
   updator();
 
   return () => {
     window.removeEventListener("resize", onResize);
+    socket.disconnect();
   };
 });
 
 let anim = ref(null);
 const lastNumber = ref(0);
-const imageSpin = ref(false);
 
 let updating = false;
 
-async function pooler() {
-  await fetcher();
-  while (data.value.status !== "done") {
-    imageSpin.value = true;
-    await fetcher();
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+socket.on("connect", () => {
+  console.log("Connected");
+  socket.emit("join", route.params.id);
+});
+
+socket.on("update_detection", (remote_data) => {
+  console.log("Update", remote_data)
+
+  data.value = remote_data;
+  if (data.value !== "done" && remote_data.status === "done") {
+    // Reload viewer
+    viewer.open({
+      type: "image",
+      url: "/api/detections/" + route.params.id + "/windows?t=" + Date.now(),
+    });
+    anim.value.play();
   }
-  imageSpin.value = false;
-}
+})
+
 
 async function updateParams(params) {
-  if (updating) return;
-  updating = true;
+  if (data.value.status !== "done") return;
 
   console.log("update params", params);
 
@@ -141,22 +154,6 @@ async function updateParams(params) {
     },
     body: JSON.stringify(params),
   });
-  const j = await res.json();
-
-  data.value = j;
-
-  // Long polling
-  //
-  await pooler();
-
-  console.log("ok");
-  // Reload viewer
-  viewer.open({
-    type: "image",
-    url: "/api/detections/" + route.params.id + "/windows?t=" + Date.now(),
-  });
-  updating = false;
-  anim.value.play();
 }
 </script>
 
@@ -212,7 +209,7 @@ async function updateParams(params) {
       </n-el>
 
       <div class="image">
-        <n-spin style="width: 100%; height: 100%;" :show="imageSpin">
+        <n-spin style="width: 100%; height: 100%;" :show="data.status !== 'done'">
           <div class="layers" :ref="initOpenseagragon"></div>
           <template #description>
             <n-text depth="3" v-if="data.status === 'queue'">排队中...

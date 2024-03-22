@@ -1,13 +1,17 @@
 <script setup>
 import { NSlider } from "naive-ui";
 
-import { defineProps, defineEmits, ref } from "vue";
+import { defineProps, defineEmits, ref, watchEffect } from "vue";
 
 const props = defineProps(["value", "step", "min", "max"])
 
 const emit = defineEmits(["update:value"])
 
 const localValue = ref(props.value)
+
+watchEffect(() => {
+  localValue.value = props.value
+})
 
 </script>
 

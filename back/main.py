@@ -12,6 +12,8 @@ import time
 import shutil
 import json as mjson
 from config import DB, MASTER, BASE
+import socketio
+import asyncio
 
 
 def make_conn():
@@ -31,8 +33,11 @@ with make_conn().cursor() as c:
 # Ensure ./detections/ exists
 os.makedirs("./detections", exist_ok=True)
 
+sio = socketio.AsyncServer(async_mode="sanic", logger=True, cors_allowed_origins="*")
 app = Sanic(__name__)
 Sanic.start_method = "fork"
+sio.attach(app, "/api/ws")
+
 api = Blueprint("api", url_prefix="/api")
 
 
@@ -69,6 +74,47 @@ def nms(boxes, threshold, iou):  # boxes: [x1, y1, x2, y2, score]
     return boxes[result].tolist()
 
 
+def _update_detection(id, num=None, status=None, remark=None, params=None):
+    db = make_conn()
+    sql = "UPDATE detections SET "
+
+    vars = []
+
+    if num is not None:
+        sql += "num = %s, "
+        vars.append(num)
+    if status is not None:
+        sql += "status = %s, "
+        vars.append(status)
+    if remark is not None:
+        sql += "remark = %s, "
+        vars.append(remark)
+    if params is not None:
+        sql += "params = %s, "
+        vars.append(params)
+
+    sql += "modified_at = %s WHERE id = %s"
+
+    vars.append(time.time())
+    vars.append(id)
+
+    with db.cursor() as c:
+        c.execute(sql, vars)
+        c.execute("SELECT * FROM detections WHERE id = %s", (id,))
+        row = c.fetchone()
+
+    print("Update", id)
+    print(row)
+    row["params"] = mjson.loads(row["params"])
+
+    asyncio.create_task(sio.emit("update_detection", row, room=id))
+
+
+@sio.on("join")
+async def join(sid, detection_id):
+    sio.enter_room(sid, detection_id)
+
+
 class PredictionTask:
     id: str
     params: dict
@@ -77,18 +123,8 @@ class PredictionTask:
         self.id = id
         self.params = params
 
-    @property
-    def db(self):
-        return make_conn()
-
     def image_url(self):
         return f"{BASE}/api/detections/{self.id}/origin"
-
-    def set_status(self, status):
-        with self.db.cursor() as c:
-            c.execute(
-                "UPDATE detections SET status = %s WHERE id = %s", (status, self.id)
-            )
 
     # def done(self, boxes, window_num, window_size, window_lt):
     #
@@ -141,11 +177,7 @@ class PredictionTask:
             cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
         cv2.imwrite(os.path.join(base, "origin.windows.jpg"), img)
 
-        with self.db.cursor() as c:
-            c.execute(
-                "UPDATE detections SET num = %s, status = %s WHERE id = %s",
-                (len(boxes), "done", self.id),
-            )
+        _update_detection(self.id, num=len(boxes), status="done")
 
 
 @app.main_process_start
@@ -153,6 +185,9 @@ async def demo_task(app: Sanic):
     conn = make_conn()
     app.shared_ctx.queue = Queue()
     print("Main")
+
+    if not MASTER:
+        return
 
     p = master.Pool(MASTER, app.shared_ctx.queue)
     p.start()
@@ -168,7 +203,7 @@ async def demo_task(app: Sanic):
 
 
 @api.get("/")
-async def hello(request: Request):
+async def hello(_: Request):
     return json({"message": "Hello World"})
 
 
@@ -200,23 +235,14 @@ async def new_detection(request: Request):
     # Write Database
     with conn.cursor() as c:
         c.execute(
-            "insert into detections (id, params, modified_at, remark, status) values (%s, %s, %s, %s, %s)",
+            "INSERT INTO detections (id, params, modified_at, remark, status) values (%s, %s, %s, %s, %s)",
             (id, mjson.dumps(params), time.time(), "", "queue"),
         )
 
     # Add Task
     request.app.shared_ctx.queue.put(PredictionTask(id, params))
 
-    return json(
-        {
-            "id": id,
-            "params": params,
-            "modified_at": time.time(),
-            "status": "queue",
-            "queue": request.app.shared_ctx.queue.qsize(),
-            "remark": "",
-        }
-    )
+    return _get_detection(request, id)
 
 
 @api.put("/detections/<id>/params")
@@ -267,11 +293,7 @@ async def modify_detection(request: Request, id: str):
     if old_params == params:
         return json(row)
 
-    with conn.cursor() as c:
-        c.execute(
-            "UPDATE detections SET params = %s, modified_at = %s, num = NULL, status = %s WHERE id = %s",
-            (mjson.dumps(params), time.time(), "queue", id),
-        )
+    _update_detection(id, params=mjson.dumps(params), status="queue")
 
     task = PredictionTask(id, params)
     if (
@@ -298,10 +320,7 @@ async def modify_detection_remark(request: Request, id: str):
         row = c.fetchone()
         if row is None:
             return json({"error": "Not Found"}, 404)
-        c.execute(
-            "UPDATE detections SET remark = %s, modified_at = %s WHERE id = %s",
-            (remark, time.time(), id),
-        )
+        _update_detection(id, remark=remark)
 
     return _get_detection(request, id)
 
