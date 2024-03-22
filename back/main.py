@@ -136,6 +136,9 @@ class PredictionTask:
 
         self.done(result)
 
+    def set_status(self, status):
+        _update_detection(self.id, status=status)
+
     def done(self, result):
         print("Done", self.id, self.params)
         base = os.path.join("./detections", self.id)
