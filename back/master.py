@@ -119,7 +119,7 @@ class Worker(threading.Thread):
                     break
                 print("Predicting", task.id)
                 task.set_status("processing")
-                # TODO
+
                 url = task.image_url()
                 params = deepcopy(task.params)
 

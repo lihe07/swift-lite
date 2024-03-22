@@ -13,7 +13,6 @@ import shutil
 import json as mjson
 from config import DB, MASTER, BASE
 import socketio
-import asyncio
 
 
 def make_conn():
@@ -103,16 +102,15 @@ def _update_detection(id, num=None, status=None, remark=None, params=None):
         c.execute("SELECT * FROM detections WHERE id = %s", (id,))
         row = c.fetchone()
 
-    print("Update", id)
-    print(row)
+    print(sql, vars)
     row["params"] = mjson.loads(row["params"])
 
-    asyncio.create_task(sio.emit("update_detection", row, room=id))
+    app.add_task(sio.emit("update_detection", row, room=id))
 
 
 @sio.on("join")
 async def join(sid, detection_id):
-    sio.enter_room(sid, detection_id)
+    await sio.enter_room(sid, detection_id)
 
 
 class PredictionTask:
