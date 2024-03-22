@@ -130,6 +130,7 @@ socket.on("connect", () => {
 socket.on("update_detection", (remote_data) => {
   console.log("Update", remote_data)
 
+  lastRemark = remote_data.remark;
   data.value = remote_data;
   if (data.value !== "done" && remote_data.status === "done") {
     // Reload viewer

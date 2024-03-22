@@ -1,3 +1,4 @@
+import asyncio
 from multiprocessing import Queue
 from sanic import Sanic, json, file, Blueprint, Request
 
@@ -105,7 +106,7 @@ def _update_detection(id, num=None, status=None, remark=None, params=None):
     print(sql, vars)
     row["params"] = mjson.loads(row["params"])
 
-    app.add_task(sio.emit("update_detection", row, room=id))
+    asyncio.ensure_future(sio.emit("update_detection", row, room=id))
 
 
 @sio.on("join")
