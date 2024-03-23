@@ -40,7 +40,13 @@ with make_conn().cursor() as c:
 # Ensure ./detections/ exists
 os.makedirs("./detections", exist_ok=True)
 
-sio = socketio.AsyncServer(async_mode="sanic", logger=True, cors_allowed_origins="*")
+sio = socketio.AsyncServer(
+    async_mode="sanic",
+    logger=True,
+    cors_allowed_origins="*",
+    ping_timeout=5,
+    ping_interval=5,
+)
 app = Sanic(__name__)
 Sanic.start_method = "fork"
 sio.attach(app, "/api/ws")
