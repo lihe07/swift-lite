@@ -142,6 +142,7 @@ async def emitter(app: Sanic, loop):
             print("Emit", row)
 
             await sio.emit("update_detection", row, room=id)
+            await sio.emit("update_detection", id, room="all")
 
     sio.start_background_task(_emitter)
 
@@ -282,6 +283,12 @@ async def new_detection(request: Request):
     # Add Task
     request.app.shared_ctx.queue.put(PredictionTask(id, params))
 
+    await sio.emit(
+        "new_detection",
+        id,
+        room="all",
+    )
+
     return _get_detection(request, id)
 
 
@@ -421,18 +428,34 @@ def get_detection_origin_image(_, id: str, im: str):
 async def get_detections(request: Request):
     size = int(request.args.get("size", 20))
     page = int(request.args.get("page", 1))
-    # Sort in time order
+    sortby = request.args.get("sortby", "modified_at")
+    sort = request.args.get("sort", "desc")
+
+    # validate
+    if size < 1 or size > 100:
+        return json({"error": "Size should be within [1, 100]"}, 400)
+
+    if page < 1:
+        return json({"error": "Page should be greater than 0"}, 400)
+
+    if sortby not in ["modified_at", "num", "status"]:
+        return json({"error": "Invalid sortby"}, 400)
+
+    if sort not in ["asc", "desc"]:
+        return json({"error": "Invalid sort"}, 400)
+
     conn = make_conn()
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as c:
         c.execute(
-            "SELECT * FROM detections ORDER BY modified_at DESC LIMIT %s OFFSET %s",
+            f"SELECT id,num,modified_at,remark,status FROM detections ORDER BY {sortby} {sort} NULLS LAST LIMIT %s OFFSET %s",
             (size, (page - 1) * size),
         )
         rows = c.fetchall()
+        # get total
+        c.execute("SELECT COUNT(*) FROM detections")
+        total = c.fetchone()["count"]
 
-    print(rows)
-
-    return json(rows)
+    return json({"total": total, "data": rows})
 
 
 app.blueprint(api)

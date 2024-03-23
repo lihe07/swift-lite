@@ -38,7 +38,9 @@ function handleError({ event }) {
   <n-scrollbar style="max-height: 100vh">
     <main>
       <div class="header">
-        <n-h1>Swift Lite</n-h1>
+        <n-h1>
+          Swift Lite
+        </n-h1>
 
         <n-button round @click="isDark = !isDark">
           <template #icon>
@@ -73,7 +75,7 @@ function handleError({ event }) {
 
       <div class="space"></div>
 
-      <n-card title="最近的检测">
+      <n-card title="检测列表">
         <RecentList></RecentList>
       </n-card>
 
@@ -82,6 +84,16 @@ function handleError({ event }) {
       <n-card title="更新日志">
         <ChangeLog></ChangeLog>
       </n-card>
+
+
+      <div class="space"></div>
+
+
+      <div style="text-align: center;">
+        <n-text depth="3">
+          &copy; 2021 - {{ new Date().getFullYear() }} Swift Detection Series
+        </n-text>
+      </div>
 
     </main>
   </n-scrollbar>

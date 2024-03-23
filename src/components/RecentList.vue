@@ -1,11 +1,15 @@
 <script setup>
 import { NDataTable, NButtonGroup, NButton, NText } from "naive-ui";
 import { useRouter } from "vue-router";
-import { h, ref } from "vue";
+import { h, ref, reactive, onUnmounted } from "vue";
+import { io } from "socket.io-client";
+
+
+
 
 const router = useRouter();
 
-const columns = [
+const columns = ref([
   {
     title: "修改时间",
     key: "modified_at",
@@ -13,16 +17,24 @@ const columns = [
       // Parse Unix timestamp to human readable string
       return new Date(row.modified_at * 1000).toLocaleString();
     },
+    sorter: true,
+    defaultSortOrder: "descend",
+    sortOrder: "descend",
   },
   {
     title: "状态",
+    key: "status",
     render(row) {
       return { done: "完成", queue: "排队中", processing: "处理中" }[row.status];
     },
+    sorter: true,
+    sortOrder: false,
   },
   {
     title: "数量",
     key: "num",
+    sorter: true,
+    sortOrder: false,
   },
   {
     title: "备注",
@@ -56,7 +68,7 @@ const columns = [
       ];
     },
   },
-];
+]);
 
 function renderCell(value) {
   if (!value) {
@@ -66,26 +78,95 @@ function renderCell(value) {
 }
 
 const data = ref([]);
+const pagination = reactive({
+  pageSizes: [5, 10, 20, 50],
+  pageSize: 20,
+  page: 1,
+  showSizePicker: true,
+  onChange(page) {
+    pagination.page = page;
+    fetchData();
+  },
+  onUpdatePageSize(size) {
+    pagination.pageSize = size;
+    fetchData();
+  },
+});
 
 const loading = ref(true);
+const table = ref(null);
 
-function fetchData() {
-  loading.value = true;
-  fetch("/api/detections")
-    .catch((err) => {
-      console.error(err);
-      loading.value = false;
-    })
-    .then((resp) => resp.json())
-    .then((resp) => {
-      console.log(resp);
-      if (resp.length) data.value = resp;
-      else data.value = [];
-      loading.value = false;
-    });
+async function fetchData(silent = false) {
+  // console.log(columns.value?.map(col => col.sortOrder))
+  let sortby = 'modified_at'
+  let sort = 'desc'
+
+  for (const col of columns.value) {
+    if (col.sortOrder) {
+      sortby = col.key
+      sort = col.sortOrder
+      break
+    }
+  }
+
+  sort = sort === 'ascend' ? 'asc' : 'desc'
+
+  loading.value = !silent;
+  const resp = await fetch("/api/detections?" + new URLSearchParams({ page: pagination.page, size: pagination.pageSize, sortby, sort }))
+  const json = await resp.json()
+  console.log(resp);
+  pagination.pageCount = Math.ceil(json.total / pagination.pageSize);
+  pagination.itemCount = json.total;
+
+  console.log(pagination.pageCount, pagination.itemCount)
+  data.value = json.data;
+  loading.value = false;
 }
 
 fetchData();
+
+const socket = io({
+  path: "/api/ws",
+  addTrailingSlash: false
+})
+
+
+socket.on("update_detection", () => fetchData(true))
+socket.on("new_detection", () => fetchData(true))
+
+socket.on("connect", () => {
+  console.log("Connected");
+  socket.emit("join", "all");
+});
+
+
+onUnmounted(() => {
+  socket.disconnect();
+});
+
+
+function handleSorterChange(sorter) {
+  console.log(sorter)
+  if (!sorter.order) {
+    sorter.order = "descend";
+  }
+
+  columns.value = columns.value.map((col) => {
+    if (col.key === sorter.columnKey) {
+      return {
+        ...col,
+        sortOrder: sorter.order,
+      };
+    }
+    return {
+      ...col,
+      sortOrder: false,
+    };
+  })
+
+  fetchData();
+
+}
 
 function deleteDetection(id) {
   fetch(`/api/detections/${id}`, {
@@ -95,5 +176,6 @@ function deleteDetection(id) {
 </script>
 
 <template>
-  <n-data-table :columns="columns" :data="data" :render-cell="renderCell" :loading="loading"></n-data-table>
+  <n-data-table remote ref="table" :columns="columns" :data="data" :render-cell="renderCell" :loading="loading"
+    @update:sorter="handleSorterChange" :pagination="pagination"></n-data-table>
 </template>
