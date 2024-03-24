@@ -2,8 +2,6 @@ import socket
 import struct
 import json
 from copy import deepcopy
-import aiofiles
-from aioprocessing import AioQueue
 from common import PredictionTask
 from config import MASTER
 import asyncio

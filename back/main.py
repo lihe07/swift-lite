@@ -1,4 +1,3 @@
-import asyncio
 from sanic import Sanic, json, file, Blueprint, Request
 
 import threading
@@ -12,11 +11,11 @@ import psycopg2.extras
 import time
 import shutil
 import json as mjson
-from config import MASTER, UPDATE_PIPE
+from config import UPDATE_PIPE
 import socketio
 import aiofiles
 from common import make_conn, _update_detection, PredictionTask
-from aioprocessing import AioBarrier, AioQueue
+from aioprocessing import AioQueue
 
 
 if not os.path.exists(UPDATE_PIPE):
