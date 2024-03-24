@@ -3,17 +3,19 @@ import struct
 import json
 from copy import deepcopy
 import aiofiles
+from aioprocessing import AioQueue
 from common import PredictionTask
-from config import TASK_PIPE, MASTER
+from config import MASTER
 import asyncio
 
-workers = []
+print("Hello")
 
 
 class Worker:
-    def __init__(self, s: socket.socket, loop: asyncio.AbstractEventLoop):
+    def __init__(self, s: socket.socket, loop: asyncio.AbstractEventLoop, q):
         self.s = s
         self.loop = loop
+        self.q = q
 
     async def receive_or_timeout(self, size: int, timeout: float):
         async def recv_by_chunks():
@@ -106,16 +108,19 @@ class Worker:
         return json.loads(data)
 
     async def read_task(self):
-        async with aiofiles.open(TASK_PIPE, "r") as pipe:
-            task = await pipe.readline()
+        # async with aiofiles.open(TASK_PIPE, "r") as pipe:
+        #     task = await pipe.readline()
+        print("Waiting for task...", self.q.qsize())
+        task = await self.q.coro_get()
+        print("Got task", task)
         return PredictionTask.from_id(task.strip())
 
     async def handler(self) -> None:
+        print("Qsize", self.q.qsize())
         while True:
             try:
-                print("Waiting for task")
                 try:
-                    task = await asyncio.wait_for(self.read_task(), 10)
+                    task = await asyncio.wait_for(self.read_task(), 9999)
 
                     if task is None:
                         continue
@@ -130,8 +135,7 @@ class Worker:
                 if not await self.ping():
                     print("Worker failed to ping")
                     task.set_status("queue")
-                    async with aiofiles.open(TASK_PIPE, "w") as pipe:
-                        await pipe.write(task.id)
+                    await self.q.coro_put(task.id)
                     break
 
                 print("Predicting", task.id)
@@ -152,8 +156,7 @@ class Worker:
                     print("Worker failed to predict")
                     # push back to queue
                     task.set_status("queue")
-                    async with aiofiles.open(TASK_PIPE, "w") as pipe:
-                        await pipe.write(task.id)
+                    await self.q.coro_put(task.id)
                     break
                 task.done(result)
                 print("Det time", task.id, result["det_time"])
@@ -165,7 +168,8 @@ class Worker:
         self.close()
 
 
-async def accept_loop(loop: asyncio.AbstractEventLoop):
+async def accept_loop(q):
+    loop = asyncio.get_event_loop()
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
     # set non-blocking
@@ -180,7 +184,7 @@ async def accept_loop(loop: asyncio.AbstractEventLoop):
     while True:
         conn, addr = await loop.sock_accept(s)
         print("Connection from", addr)
-        w = Worker(conn, loop)
+        w = Worker(conn, loop, q)
         # if not await w.ping():
         #     print("Worker", addr, "failed to ping")
         #     w.close()
