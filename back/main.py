@@ -15,7 +15,7 @@ from config import UPDATE_PIPE
 import socketio
 import aiofiles
 from common import make_conn, _update_detection, PredictionTask
-from aioprocessing import AioQueue
+from asyncio import Queue
 
 
 if not os.path.exists(UPDATE_PIPE):
@@ -76,31 +76,26 @@ async def before_server_start(app: Sanic, loop):
 
     sio.start_background_task(_emitter)
 
+    app.ctx.tasks = Queue()
+
+    app.add_task(master.accept_loop(app.ctx.tasks))
     # find all queue tasks
     conn = make_conn()
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as c:
         c.execute("SELECT * FROM detections WHERE status = 'queue'")
         rows = c.fetchall()
 
-    print("Queue", rows, app.shared_ctx.tasks.qsize())
+    print("Queue", rows, app.ctx.tasks.qsize())
     for row in rows:
-        await app.shared_ctx.tasks.coro_put(row["id"])
+        await app.ctx.tasks.put(row["id"])
 
-    print("ok", app.shared_ctx.tasks.qsize())
-
-    app.add_task(master.accept_loop(app.shared_ctx.tasks))
+    print("ok", app.ctx.tasks.qsize())
 
 
 @sio.on("join")
 async def join(sid, detection_id):
     print(threading.current_thread())
     await sio.enter_room(sid, detection_id)
-
-
-@app.main_process_start
-async def demo_task(app: Sanic):
-    print("Main process")
-    app.shared_ctx.tasks = AioQueue()
 
 
 @api.get("/")
@@ -142,7 +137,7 @@ async def new_detection(request: Request):
 
     # Add Task
     print("Writing to pipe", id)
-    await request.app.shared_ctx.tasks.coro_put(id)
+    await request.app.ctx.tasks.put(id)
 
     await sio.emit(
         "new_detection",
@@ -212,7 +207,7 @@ async def modify_detection(request: Request, id: str):
         task.nms_only()
         return _get_detection(request, id)
 
-    await request.app.shared_ctx.tasks.coro_put(id)
+    await request.app.ctx.tasks.put(id)
 
     return _get_detection(request, id)
 

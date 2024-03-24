@@ -109,7 +109,7 @@ class Worker:
         # async with aiofiles.open(TASK_PIPE, "r") as pipe:
         #     task = await pipe.readline()
         print("Waiting for task...", self.q.qsize())
-        task = await self.q.coro_get()
+        task = await self.q.get()
         print("Got task", task)
         return PredictionTask.from_id(task.strip())
 
@@ -118,7 +118,7 @@ class Worker:
         while True:
             try:
                 try:
-                    task = await asyncio.wait_for(self.read_task(), 9999)
+                    task = await asyncio.wait_for(self.read_task(), 10)
 
                     if task is None:
                         continue
@@ -133,7 +133,7 @@ class Worker:
                 if not await self.ping():
                     print("Worker failed to ping")
                     task.set_status("queue")
-                    await self.q.coro_put(task.id)
+                    await self.q.put(task.id)
                     break
 
                 print("Predicting", task.id)
@@ -154,7 +154,7 @@ class Worker:
                     print("Worker failed to predict")
                     # push back to queue
                     task.set_status("queue")
-                    await self.q.coro_put(task.id)
+                    await self.q.put(task.id)
                     break
                 task.done(result)
                 print("Det time", task.id, result["det_time"])
@@ -177,6 +177,8 @@ async def accept_loop(q):
     workers = []
 
     print("Accepting on", MASTER)
+    # w = Worker(None, loop, q)
+    # loop.create_task(w.handler())
 
     # accepting loop
     while True:
