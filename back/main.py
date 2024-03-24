@@ -1,4 +1,3 @@
-from multiprocessing import Queue
 from sanic import Sanic, json, file, Blueprint, Request
 
 import threading
@@ -12,21 +11,17 @@ import psycopg2.extras
 import time
 import shutil
 import json as mjson
-from config import DB, MASTER, BASE
+from config import DB, MASTER, BASE, UPDATE_PIPE, TASK_PIPE
 import socketio
 import aiofiles
+from common import make_conn, _update_detection, PredictionTask
 
 
-PIPE = "/tmp/swift-pipe"
+if not os.path.exists(UPDATE_PIPE):
+    os.mkfifo(UPDATE_PIPE)
 
-if not os.path.exists(PIPE):
-    os.mkfifo(PIPE)
-
-
-def make_conn():
-    conn = psycopg2.connect(DB, cursor_factory=psycopg2.extras.RealDictCursor)
-    conn.autocommit = True
-    return conn
+if not os.path.exists(TASK_PIPE):
+    os.mkfifo(TASK_PIPE)
 
 
 # Ensure Table
@@ -48,87 +43,17 @@ sio = socketio.AsyncServer(
     ping_interval=5,
 )
 app = Sanic(__name__)
-Sanic.start_method = "fork"
 sio.attach(app, "/api/ws")
 
 api = Blueprint("api", url_prefix="/api")
 
 
-def nms(boxes, threshold, iou):  # boxes: [x1, y1, x2, y2, score]
-    boxes = np.array(boxes)
-    # filter boxes with low score
-    boxes = boxes[boxes[:, 4] > threshold]
-
-    x1 = boxes[:, 0]
-    y1 = boxes[:, 1]
-    x2 = boxes[:, 2]
-    y2 = boxes[:, 3]
-    scores = boxes[:, 4]
-
-    areas = (y2 - y1) * (x2 - x1)
-    result = []
-
-    index = scores.argsort()[::-1]
-    while index.size > 0:
-        i = index[0]
-        result.append(i)
-        xx1 = np.maximum(x1[i], x1[index[1:]])
-        yy1 = np.maximum(y1[i], y1[index[1:]])
-        xx2 = np.minimum(x2[i], x2[index[1:]])
-        yy2 = np.minimum(y2[i], y2[index[1:]])
-        w = np.maximum(0.0, xx2 - xx1)
-        h = np.maximum(0.0, yy2 - yy1)
-        inter = w * h
-        ovr = inter / (areas[i] + areas[index[1:]] - inter)
-        inds = np.where(ovr <= iou)[0]
-        index = index[inds + 1]
-
-    # to list
-    return boxes[result].tolist()
-
-
-def _update_detection(id, num=None, status=None, remark=None, params=None):
-    db = make_conn()
-    sql = "UPDATE detections SET "
-
-    vars = []
-
-    if num is not None:
-        sql += "num = %s, "
-        vars.append(num)
-    if status is not None:
-        sql += "status = %s, "
-        vars.append(status)
-    if remark is not None:
-        sql += "remark = %s, "
-        vars.append(remark)
-    if params is not None:
-        sql += "params = %s, "
-        vars.append(params)
-
-    sql += "modified_at = %s WHERE id = %s"
-
-    vars.append(time.time())
-    vars.append(id)
-
-    with db.cursor() as c:
-        c.execute(sql, vars)
-
-    db.commit()
-
-    print(sql, vars)
-
-    # write to pipe
-    with open(PIPE, "w") as f:
-        f.write(id + "\n")
-
-
 @app.before_server_start
-async def emitter(app: Sanic, loop):
+async def emitter(_: Sanic, loop):
     async def _emitter():
         while True:
             # read from pipe, asyncio
-            async with aiofiles.open(PIPE, "r") as f:
+            async with aiofiles.open(UPDATE_PIPE, "r") as f:
                 id = await f.readline()
                 id = id.strip()
                 if not id:
@@ -151,6 +76,7 @@ async def emitter(app: Sanic, loop):
             await sio.emit("update_detection", id, room="all")
 
     sio.start_background_task(_emitter)
+    loop.create_task(master.accept_loop(loop))
 
 
 @sio.on("join")
@@ -159,94 +85,27 @@ async def join(sid, detection_id):
     await sio.enter_room(sid, detection_id)
 
 
-class PredictionTask:
-    id: str
-    params: dict
-
-    def __init__(self, id: str, params: dict):
-        self.id = id
-        self.params = params
-
-    def image_url(self):
-        return f"{BASE}/api/detections/{self.id}/origin"
-
-    # def done(self, boxes, window_num, window_size, window_lt):
-    #
-
-    def nms_only(self):
-        base = os.path.join("./detections", self.id)
-        with open(os.path.join(base, "result.json"), "r") as f:
-            result = mjson.loads(f.read())
-
-        self.done(result)
-
-    def set_status(self, status):
-        _update_detection(self.id, status=status)
-
-    def done(self, result):
-        print("Done", self.id, self.params)
-        base = os.path.join("./detections", self.id)
-        os.makedirs(base, exist_ok=True)
-        boxes = result["boxes"]
-
-        with open(os.path.join(base, "result.json"), "w") as f:
-            f.write(mjson.dumps(result))
-
-        boxes = nms(boxes, self.params["threshold"], self.params["iou"])
-
-        with open(os.path.join(base, "boxes.json"), "w") as f:
-            f.write(mjson.dumps(boxes))
-
-        # draw boxes
-        img = cv2.imread(os.path.join(base, "origin.jpg"))
-        for box in boxes:
-            x1, y1, x2, y2, score = box
-            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
-            cv2.putText(
-                img,
-                f"{score:.2f}",
-                (x1, y1),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.5,
-                (0, 255, 0),
-                2,
-            )
-
-        cv2.imwrite(os.path.join(base, "origin.boxes.jpg"), img)
-
-        # draw windows
-        window_size = result["window_size"]
-        windows_lt = result["windows_lt"]
-        for x, y in windows_lt:
-            x, y = int(x), int(y)
-            h, w = int(window_size[0]), int(window_size[1])
-            cv2.rectangle(img, (x, y), (x + w, y + h), (255, 0, 0), 2)
-        cv2.imwrite(os.path.join(base, "origin.windows.jpg"), img)
-
-        _update_detection(self.id, num=len(boxes), status="done")
-
-
 @app.main_process_start
 async def demo_task(app: Sanic):
-    conn = make_conn()
-    app.shared_ctx.queue = Queue()
-    print("Main")
-
     if not MASTER:
         return
 
-    p = master.Pool(MASTER, app.shared_ctx.queue)
-    p.start()
+    def append_old_tasks():
+        print("Waiting for pipe to open...")
+        pipe = open(TASK_PIPE, "w")
+        # find all queue tasks
+        conn = make_conn()
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as c:
+            c.execute("SELECT * FROM detections WHERE status = 'queue'")
+            rows = c.fetchall()
 
-    # find all queue tasks
-    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as c:
-        c.execute("SELECT * FROM detections WHERE status = 'queue'")
-        rows = c.fetchall()
+        print("Queue", rows)
+        for row in rows:
+            pipe.write(row["id"] + "\n")
+        print("ok")
+        pipe.close()
 
-    print("Queue", rows)
-    for row in rows:
-        app.shared_ctx.queue.put(PredictionTask(row["id"], mjson.loads(row["params"])))
+    threading.Thread(target=append_old_tasks).start()
 
 
 @api.get("/")
@@ -287,7 +146,9 @@ async def new_detection(request: Request):
         )
 
     # Add Task
-    request.app.shared_ctx.queue.put(PredictionTask(id, params))
+    print("Writing to pipe", id)
+    async with aiofiles.open(TASK_PIPE, "w") as f:
+        await f.write(id + "\n")
 
     await sio.emit(
         "new_detection",
@@ -348,16 +209,20 @@ async def modify_detection(request: Request, id: str):
 
     _update_detection(id, params=mjson.dumps(params), status="queue")
 
-    task = PredictionTask(id, params)
     if (
         old_params["window_size"] == params["window_size"]
         and old_params["overlap"] == params["overlap"]
         and old_params["tiling"] == params["tiling"]
     ):
+        task = PredictionTask(id, params)
         task.nms_only()
         return _get_detection(request, id)
 
-    request.app.shared_ctx.queue.put(task)
+    # with open(TASK_PIPE, "w") as f:
+    #     f.write(id + "\n")
+    print("Writing to pipe", id)
+    async with aiofiles.open(TASK_PIPE, "w") as f:
+        await f.write(id + "\n")
 
     return _get_detection(request, id)
 
@@ -400,7 +265,7 @@ def _get_detection(request: Request, id: str):
         return json({"error": "Not Found"}, 404)
     row["params"] = mjson.loads(row["params"])
     if row["status"] == "queue":
-        row["queue"] = request.app.shared_ctx.queue.qsize()
+        row["queue"] = 1
     return json(row)
 
 

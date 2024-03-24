@@ -25,7 +25,7 @@ function toggleTiling(e) {
         <LazyNumber style="width: 7rem; margin-right: 1rem" :show-button="false" v-model:value="props.data.window_size"
           :step="0.01" :min="0" :max="1"></LazyNumber>
 
-        <LazySlider v-model:value="props.data.window_size" :step="0.01" :min="0.5" :max="1"></LazySlider>
+        <LazySlider v-model:value="props.data.window_size" :step="0.01" :min="0.3" :max="1"></LazySlider>
       </n-form-item>
 
       <n-form-item label="重叠比例">
