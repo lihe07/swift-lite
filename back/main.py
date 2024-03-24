@@ -43,6 +43,7 @@ sio = socketio.AsyncServer(
     ping_interval=5,
 )
 app = Sanic(__name__)
+Sanic.start_method = "fork"
 sio.attach(app, "/api/ws")
 
 api = Blueprint("api", url_prefix="/api")
