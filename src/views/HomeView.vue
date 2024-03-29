@@ -19,6 +19,7 @@ import {
 import { inject } from "vue";
 import RecentList from "@/components/RecentList.vue";
 import ChangeLog from "@/components/ChangeLog.vue";
+import AprilFool from "@/components/AprilFool.vue";
 import { useRouter } from "vue-router";
 
 const isDark = inject("isDark");
@@ -52,6 +53,9 @@ function handleError({ event }) {
           </template>
         </n-button>
       </div>
+
+      <AprilFool />
+      <div class="space"></div>
 
       <n-card title="新的检测">
         <n-upload action="/api/detections" @finish="handleFinish" @error="handleError">
