@@ -24,19 +24,28 @@ watch(isDark, (val) => {
   localStorage.setItem("theme", val ? "dark" : "light");
 });
 
-const themeVars = useThemeVars();
+
+const lightThemeOverrides = {
+  common: {
+    overlayColor: "rgba(255, 255, 255, 0.7)",
+  },
+}
+
+const darkThemeOverrides = {
+  common: {
+    overlayColor: "rgba(0, 0, 0, 0.5)",
+  }
+}
+
 </script>
 
 <template>
-  <n-config-provider :theme="isDark ? darkTheme : lightTheme">
-    <n-el
-      tag="div"
-      style="
+  <n-config-provider :theme="isDark ? darkTheme : lightTheme"
+    :theme-overrides="isDark ? darkThemeOverrides : lightThemeOverrides">
+    <n-el tag="div" style="
         background: var(--body-color);
         transition: background-color 0.3s var(--cubic-bezier-ease-in-out);
-      "
-      class="body"
-    >
+      " class="body">
       <RouterView></RouterView>
     </n-el>
   </n-config-provider>

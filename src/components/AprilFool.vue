@@ -46,7 +46,7 @@ const allImages = [
   },
   {
     src: pw1,
-    answer: true,
+    answer: false,
   },
   {
     src: pw2,
@@ -74,14 +74,32 @@ const allImages = [
   },
   {
     src: o4,
-    answer: false,
+    answer: true,
   },
 ].map((image, index) => ({
   ...image,
   id: index,
 }));
 
-const images = allImages.sort(() => Math.random() - 0.5).slice(0, 4);
+function shuffle(array) {
+  return array.sort(() => Math.random() - 0.5);
+}
+
+
+// const images = allImages.sort(() => Math.random() - 0.5).slice(0, 4);
+function sampleImages(size) {
+  // numCorrects should be within 1 to size / 2
+  const numCorrects = Math.floor(Math.random() * (size / 2)) + 1;
+
+  let corrects = shuffle(allImages.filter((image) => image.answer)).slice(0, numCorrects);
+
+  // Fill the rest with random images
+  let incorrects = shuffle(allImages.filter((image) => !image.answer)).slice(0, size - numCorrects);
+
+  return shuffle([...corrects, ...incorrects]);
+}
+
+const images = sampleImages(8);
 
 const selected = ref([]);
 const result = ref(null);
@@ -96,14 +114,14 @@ function toggle(id) {
 }
 
 async function submit() {
-  const correct = images
-    .filter((image) => image.answer)
-    .every((image) => selected.value.includes(image.id));
+  const correct = selected.value.length === images.filter((image) => image.answer).length
+    && selected.value.every((id) => allImages[id].answer);
+
 
 
   let count
   if (correct) {
-    const resp = await fetch("/api/april-fool", {
+    const resp = await fetch("/api/april-fools", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -164,7 +182,7 @@ function handleClose() {
       </p>
 
       <div style="position: relative;">
-        <n-grid cols="2 400:4 " x-gap="10" y-gap="10">
+        <n-grid cols="2 450:4 " x-gap="10" y-gap="10">
           <n-grid-item v-for="image in  images " :key="image.id" style="cursor: pointer;"
             @click="() => toggle(image.id)">
 
@@ -175,7 +193,7 @@ function handleClose() {
         <div class='result' :class="{ show: result }">
           <p v-if="result?.correct" style="display: flex; flex-direction: column; align-items: center;">
             <span>验证通过！</span>
-            <ConfettiExplosion :shouldDestroyAfterDone="false" />
+            <ConfettiExplosion :duration="3000" />
             您是第 {{ parseInt(result.count) }} 位通过验证的用户。
           </p>
           <p v-else>
@@ -183,7 +201,7 @@ function handleClose() {
 
             <div />
 
-            <n-button @click="result = null" style="margin-top: 1rem;">再试一次</n-button>
+            <n-button type="primary" @click="result = null" style="margin-top: 1rem;">再试一次</n-button>
 
           </p>
 
@@ -195,7 +213,7 @@ function handleClose() {
 
       <template #action>
         <div style="display: flex; justify-content: space-between; align-items: center;">
-          <n-button type="primary" @click="submit">提交</n-button>
+          <n-button type="primary" @click="submit" :disabled="result !== null">提交</n-button>
 
 
           <div>
@@ -241,14 +259,14 @@ img {
   display: flex;
   justify-content: center;
   align-items: center;
-  color: #fff;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: var(--overlay-color);
   border-radius: 0.5rem;
 
   pointer-events: none;
   transition: all 0.2s;
   opacity: 0;
 }
+
 
 .result span {
   font-size: 1.5rem;
