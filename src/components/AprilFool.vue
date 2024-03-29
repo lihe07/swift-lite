@@ -142,7 +142,12 @@ async function submit() {
   }
 }
 
-let showAprilFool = ref(true);
+let showAprilFool = ref(false);
+
+// check date is April 1st
+if (new Date().getMonth() === 3 && new Date().getDate() === 1) {
+  showAprilFool.value = true;
+}
 
 // Check session storage has been set
 if (sessionStorage.getItem("hide-april-fool")) {
@@ -151,7 +156,7 @@ if (sessionStorage.getItem("hide-april-fool")) {
 
 function handleClose() {
   showAprilFool.value = false;
-  // sessionStorage.setItem("hide-april-fool", "true");
+  sessionStorage.setItem("hide-april-fool", "true");
 }
 
 
