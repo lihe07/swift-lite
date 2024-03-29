@@ -30,6 +30,12 @@ with make_conn().cursor() as c:
         """
     )
 
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS april_fools (id SERIAL PRIMARY KEY, created_at TIMESTAMP)
+        """
+    )
+
 # Ensure ./detections/ exists
 os.makedirs("./detections", exist_ok=True)
 
@@ -101,6 +107,17 @@ async def join(sid, detection_id):
 @api.get("/")
 async def hello(_: Request):
     return json({"message": "Hello World"})
+
+
+@api.post("/april-fools")
+async def add_april_fools(_):
+    conn = make_conn()
+    with conn.cursor() as c:
+        c.execute("INSERT INTO april_fools (created_at) VALUES (NOW())")
+        c.execute("SELECT COUNT(*) FROM april_fools")
+        count = c.fetchone()["count"]
+
+    return json({"count": count})
 
 
 @api.post("/detections")
