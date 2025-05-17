@@ -185,9 +185,9 @@ async def accept_loop(q):
         conn, addr = await loop.sock_accept(s)
         print("Connection from", addr)
         w = Worker(conn, loop, q)
-        # if not await w.ping():
-        #     print("Worker", addr, "failed to ping")
-        #     w.close()
-        #     continue
+        if not await w.ping():
+            print("Worker", addr, "failed to ping")
+            w.close()
+            continue
         loop.create_task(w.handler())
         workers.append(w)
