@@ -16,6 +16,7 @@ import socketio
 import aiofiles
 from common import make_conn, _update_detection, PredictionTask
 from asyncio import Queue
+import asyncio
 
 
 if not os.path.exists(UPDATE_PIPE):
@@ -77,8 +78,11 @@ async def before_server_start(app: Sanic, loop):
 
             print("Emit", row)
 
-            await sio.emit("update_detection", row, room=id)
-            await sio.emit("update_detection", id, room="all")
+            # await sio.emit("update_detection", row, room=id)
+            try:
+                await asyncio.wait_for(sio.emit("update_detection", id, room="all"), 3)
+            except asyncio.TimeoutError:
+                print("Timeout, skipping emit")
 
     sio.start_background_task(_emitter)
 
