@@ -78,11 +78,8 @@ async def before_server_start(app: Sanic, loop):
 
             print("Emit", row)
 
-            # await sio.emit("update_detection", row, room=id)
-            try:
-                await asyncio.wait_for(sio.emit("update_detection", id, room="all"), 3)
-            except asyncio.TimeoutError:
-                print("Timeout, skipping emit")
+            asyncio.create_task(sio.emit("update_detection", row, room=id))
+            asyncio.create_task(sio.emit("update_detection", id, room="all"))
 
     sio.start_background_task(_emitter)
 
