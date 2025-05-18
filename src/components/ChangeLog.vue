@@ -4,6 +4,9 @@ import { NTimeline, NTimelineItem, NScrollbar } from 'naive-ui'
 
 <template>
   <n-timeline class="timeline">
+    <n-timeline-item type="" title="1.0.2" time="2025-05-18">
+      修复防火墙, 连接数过多导致的崩溃问题.
+    </n-timeline-item>
     <n-timeline-item type="" title="1.0.1" time="2024-03-23">
       加入分页和排序, 列表动态更新. 增加检测集群数量. 修改默认参数.
     </n-timeline-item>
