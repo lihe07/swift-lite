@@ -2,6 +2,7 @@
 import { onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router"; import {
   NPageHeader,
+  NScrollbar,
   NButton,
   NButtonGroup,
   NSpin,
@@ -168,31 +169,35 @@ async function updateParams(params) {
           background-color: var(--card-color);
           transition: background-color 0.3s var(--cubic-bezier-ease-in-out);
         ">
-        <n-page-header @back="router.push('/')" title="Swift Lite" subtitle="编辑器">
-          <template #extra>
-            <!-- <n-button>刷新</n-button> -->
-            <n-h3 style="margin: 0">
-              <n-number-animation ref="anim" :from="lastNumber" :to="data.num"
-                @finish="lastNumber = data.num"></n-number-animation>
-              只
-            </n-h3>
-          </template>
-        </n-page-header>
+        <div style="padding: 1rem;">
+          <n-page-header @back="router.push('/')" title="Swift Lite" subtitle="编辑器">
+            <template #extra>
+              <!-- <n-button>刷新</n-button> -->
+              <n-h3 style="margin: 0">
+                <n-number-animation ref="anim" :from="lastNumber" :to="data.num"
+                  @finish="lastNumber = data.num"></n-number-animation>
+                只
+              </n-h3>
+            </template>
+          </n-page-header>
+        </div>
 
         <n-collapse-transition :show="showForms">
-          <div class="forms">
-            <ParamsForm :data="data.params" :disabled="data.status !== 'done'"></ParamsForm>
+          <n-scrollbar style="max-height: calc(100vh - 60px); padding: 0 1rem; box-sizing: border-box;">
+            <div class="forms">
+              <ParamsForm :data="data.params" :disabled="data.status !== 'done'"></ParamsForm>
 
-            <n-form-item label="备注">
-              <n-input v-model:value="data.remark" placeholder="无" :disabled="data.status !== 'done'"></n-input>
-            </n-form-item>
+              <n-form-item label="备注">
+                <n-input v-model:value="data.remark" placeholder="无" :disabled="data.status !== 'done'"></n-input>
+              </n-form-item>
 
-            <n-button-group>
-              <n-button @click="() => open(`/api/detections/${route.params.id}/origin`)">下载原图</n-button>
-              <n-button @click="() => open(`/api/detections/${route.params.id}/windows`)">下载标注</n-button>
-              <n-button @click="() => open(`/api/detections/${route.params.id}/boxes`)">下载标注 (无窗口)</n-button>
-            </n-button-group>
-          </div>
+              <n-button-group>
+                <n-button @click="() => open(`/api/detections/${route.params.id}/origin`)">下载原图</n-button>
+                <n-button @click="() => open(`/api/detections/${route.params.id}/windows`)">下载标注</n-button>
+                <n-button @click="() => open(`/api/detections/${route.params.id}/boxes`)">下载标注 (无窗口)</n-button>
+              </n-button-group>
+            </div>
+          </n-scrollbar>
         </n-collapse-transition>
 
         <div class="btn">
@@ -235,7 +240,6 @@ main {
 .params {
   /* flex: 1; */
   width: 30rem;
-  padding: 1rem;
   position: relative;
   z-index: 5;
   background: var(--);
@@ -250,7 +254,7 @@ main {
 }
 
 .forms {
-  margin-top: 2rem;
+  margin-bottom: 2rem;
 }
 
 .image {
@@ -271,11 +275,14 @@ main {
     flex-direction: column;
   }
 
+  .forms {
+    margin-top: 1rem;
+  }
+
   .params {
     width: 100%;
     box-sizing: border-box;
     /* height: 30rem; */
-    padding: 1rem;
     z-index: 10;
   }
 

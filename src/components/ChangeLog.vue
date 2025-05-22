@@ -4,6 +4,9 @@ import { NTimeline, NTimelineItem, NScrollbar } from 'naive-ui'
 
 <template>
   <n-timeline class="timeline">
+    <n-timeline-item type="" title="1.0.3" time="2025-05-22">
+      修复桌面端编辑器界面元素溢出.
+    </n-timeline-item>
     <n-timeline-item type="" title="1.0.2" time="2025-05-18">
       修复防火墙, 连接数过多导致的崩溃问题.
     </n-timeline-item>
