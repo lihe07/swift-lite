@@ -19,16 +19,9 @@ import ParamsForm from "@/components/ParamsForm.vue";
 import { ArrowDown16Filled } from "@vicons/fluent";
 import OpenSeadragon from "openseadragon";
 
-import { io } from "socket.io-client";
-
 const route = useRoute();
 const router = useRouter();
 const showForms = ref(false);
-
-const socket = io({
-  path: "/api/ws",
-  addTrailingSlash: false
-})
 
 function open(url) {
   url = url + "?t=" + Date.now();
@@ -66,6 +59,7 @@ let lastRemark = null;
 
 
 async function updator() {
+
   const remark = data.value.remark;
   if (lastRemark !== remark) {
     lastRemark = remark;
@@ -84,6 +78,17 @@ async function updator() {
     lastParams = params;
     await updateParams(data.value.params);
   }
+
+  const remote_data = await (await fetch(`/api/detections/${route.params.id}`)).json();
+  if (data.value !== "done" && remote_data.status === "done") {
+    // Reload viewer
+    viewer.open({
+      type: "image",
+      url: "/api/detections/" + route.params.id + "/windows?t=" + Date.now(),
+    });
+    anim.value.play();
+  }
+  data.value = remote_data;
 
   setTimeout(updator, 1000);
 }
@@ -113,7 +118,6 @@ onMounted(async () => {
 
   return () => {
     window.removeEventListener("resize", onResize);
-    socket.disconnect();
   };
 });
 
@@ -121,28 +125,6 @@ let anim = ref(null);
 const lastNumber = ref(0);
 
 let updating = false;
-
-
-socket.on("connect", () => {
-  console.log("Connected");
-  socket.emit("join", route.params.id);
-});
-
-socket.on("update_detection", (remote_data) => {
-  console.log("Update", remote_data)
-
-  lastRemark = remote_data.remark;
-  data.value = remote_data;
-  if (data.value !== "done" && remote_data.status === "done") {
-    // Reload viewer
-    viewer.open({
-      type: "image",
-      url: "/api/detections/" + route.params.id + "/windows?t=" + Date.now(),
-    });
-    anim.value.play();
-  }
-})
-
 
 async function updateParams(params) {
   if (data.value.status !== "done") return;

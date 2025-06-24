@@ -2,9 +2,6 @@
 import { NDataTable, NButtonGroup, NButton, NText } from "naive-ui";
 import { useRouter } from "vue-router";
 import { h, ref, reactive, onUnmounted } from "vue";
-import { io } from "socket.io-client";
-
-
 
 
 const router = useRouter();
@@ -125,25 +122,12 @@ async function fetchData(silent = false) {
 
 fetchData();
 
-const socket = io({
-  path: "/api/ws",
-  addTrailingSlash: false
-})
-
-
-socket.on("update_detection", () => fetchData(true))
-socket.on("new_detection", () => fetchData(true))
-
-socket.on("connect", () => {
-  console.log("Connected");
-  socket.emit("join", "all");
-});
-
-
-onUnmounted(() => {
-  socket.disconnect();
-});
-
+// Pooling
+async function pooling() {
+  await fetchData(true);
+  setTimeout(pooling, 5000); // Fetch data every 5 seconds
+}
+pooling();
 
 function handleSorterChange(sorter) {
   console.log(sorter)
