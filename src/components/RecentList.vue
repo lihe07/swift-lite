@@ -1,7 +1,7 @@
 <script setup>
 import { NDataTable, NButtonGroup, NButton, NText } from "naive-ui";
 import { useRouter } from "vue-router";
-import { h, ref, reactive, onUnmounted } from "vue";
+import { h, ref, reactive, onMounted } from "vue";
 
 
 const router = useRouter();
@@ -120,14 +120,17 @@ async function fetchData(silent = false) {
   loading.value = false;
 }
 
-fetchData();
 
-// Pooling
-async function pooling() {
-  await fetchData(true);
-  setTimeout(pooling, 5000); // Fetch data every 5 seconds
-}
-pooling();
+onMounted(async () => {
+  await fetchData();
+  let pollingTimer = setInterval(() => {
+    fetchData(true);
+  }, 5000);
+
+  return () => {
+    clearInterval(pollingTimer);
+  };
+});
 
 function handleSorterChange(sorter) {
   console.log(sorter)

@@ -4,7 +4,10 @@ import { NTimeline, NTimelineItem, NScrollbar } from 'naive-ui'
 
 <template>
   <n-timeline class="timeline">
-    <n-timeline-item type="success" title="1.0.3" time="2025-05-22">
+    <n-timeline-item type="success" title="1.0.4" time="2025-06-24">
+      性能优化, 修复卡顿, 升级各种依赖包.
+    </n-timeline-item>
+    <n-timeline-item type="" title="1.0.3" time="2025-05-22">
       修复桌面端编辑器界面元素溢出.
     </n-timeline-item>
     <n-timeline-item type="" title="1.0.2" time="2025-05-18">

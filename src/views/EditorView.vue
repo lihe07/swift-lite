@@ -53,25 +53,29 @@ function onResize() {
 
 const data = ref({});
 const loading = ref(true);
+const remark = ref(null);
 
 let lastParams = null;
-let lastRemark = null;
 
+async function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
-async function updator() {
-
-  const remark = data.value.remark;
-  if (lastRemark !== remark) {
-    lastRemark = remark;
-    await fetch("/api/detections/" + route.params.id + "/remark", {
+async function updateRemark() {
+  if (data.value.remark !== remark.value) {
+    const resp = await fetch("/api/detections/" + route.params.id + "/remark", {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ remark }),
+      body: JSON.stringify({ remark: remark.value }),
     });
-
+    
+    remark.value = (await resp.json()).remark;
   }
+}
+
+async function updator() {
 
   const params = JSON.stringify(data.value.params);
   if (lastParams !== params) {
@@ -80,20 +84,22 @@ async function updator() {
   }
 
   const remote_data = await (await fetch(`/api/detections/${route.params.id}`)).json();
-  if (data.value !== "done" && remote_data.status === "done") {
+  if (data.value.status !== "done" && remote_data.status === "done") {
+    console.log("Need to reload viewer. old:", data.value.status, "new:", remote_data.status);
     // Reload viewer
     viewer.open({
       type: "image",
       url: "/api/detections/" + route.params.id + "/windows?t=" + Date.now(),
     });
-    anim.value.play();
+    setTimeout(() => {
+      anim.value && anim.value.play();
+    }, 300);
   }
   data.value = remote_data;
-
-  setTimeout(updator, 1000);
 }
 
 onMounted(async () => {
+
   window.addEventListener("resize", onResize);
   onResize();
 
@@ -104,20 +110,18 @@ onMounted(async () => {
     return;
   }
   data.value = j;
+  remark.value = data.value.remark;
   loading.value = false;
 
-  // Enter room
-
-
   lastParams = JSON.stringify(data.value.params);
-  lastRemark = data.value.remark;
 
-
-
-  updator();
+  let updatorTimer = setInterval(() => {
+    updator()
+  }, 1000);
 
   return () => {
     window.removeEventListener("resize", onResize);
+    clearInterval(updatorTimer);
   };
 });
 
@@ -170,7 +174,7 @@ async function updateParams(params) {
               <ParamsForm :data="data.params" :disabled="data.status !== 'done'"></ParamsForm>
 
               <n-form-item label="备注">
-                <n-input v-model:value="data.remark" placeholder="无" :disabled="data.status !== 'done'"></n-input>
+                <n-input v-model:value="remark" placeholder="无" :disabled="data.status !== 'done'" @blur="updateRemark"></n-input>
               </n-form-item>
 
               <n-button-group>
