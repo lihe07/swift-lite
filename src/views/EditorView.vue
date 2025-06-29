@@ -1,6 +1,8 @@
 <script setup>
-import { onMounted, ref } from "vue";
-import { useRoute, useRouter } from "vue-router"; import {
+import { onMounted, ref, watch } from "vue";
+import { isEqual } from "lodash";
+import { useRoute, useRouter } from "vue-router"; 
+import {
   NPageHeader,
   NScrollbar,
   NButton,
@@ -18,6 +20,7 @@ import { useRoute, useRouter } from "vue-router"; import {
 import ParamsForm from "@/components/ParamsForm.vue";
 import { ArrowDown16Filled } from "@vicons/fluent";
 import OpenSeadragon from "openseadragon";
+import { cloneDeep } from "lodash";
 
 const route = useRoute();
 const router = useRouter();
@@ -55,12 +58,6 @@ const data = ref({});
 const loading = ref(true);
 const remark = ref(null);
 
-let lastParams = null;
-
-async function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
 async function updateRemark() {
   if (data.value.remark !== remark.value) {
     const resp = await fetch("/api/detections/" + route.params.id + "/remark", {
@@ -76,15 +73,10 @@ async function updateRemark() {
 }
 
 async function updator() {
-
-  const params = JSON.stringify(data.value.params);
-  if (lastParams !== params) {
-    lastParams = params;
-    await updateParams(data.value.params);
-  }
+  if (data.value.status === "done") return;
 
   const remote_data = await (await fetch(`/api/detections/${route.params.id}`)).json();
-  if (data.value.status !== "done" && remote_data.status === "done") {
+  if (remote_data.status === "done") {
     console.log("Need to reload viewer. old:", data.value.status, "new:", remote_data.status);
     // Reload viewer
     viewer.open({
@@ -97,6 +89,19 @@ async function updator() {
   }
   data.value = remote_data;
 }
+
+let oldParams = null;
+watch(
+  () => data.value.params,
+  (newParams) => {
+    if (!isEqual(oldParams, newParams) && newParams) {
+      updateParams(newParams);
+      data.value.status = "processing";
+      oldParams = cloneDeep(newParams);
+    }
+  },
+  { deep: true }
+);
 
 onMounted(async () => {
 
@@ -112,8 +117,7 @@ onMounted(async () => {
   data.value = j;
   remark.value = data.value.remark;
   loading.value = false;
-
-  lastParams = JSON.stringify(data.value.params);
+  oldParams = cloneDeep(data.value.params);
 
   let updatorTimer = setInterval(() => {
     updator()
@@ -128,14 +132,12 @@ onMounted(async () => {
 let anim = ref(null);
 const lastNumber = ref(0);
 
-let updating = false;
-
 async function updateParams(params) {
   if (data.value.status !== "done") return;
 
   console.log("update params", params);
 
-  const res = await fetch("/api/detections/" + route.params.id + "/params", {
+  await fetch("/api/detections/" + route.params.id + "/params", {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
