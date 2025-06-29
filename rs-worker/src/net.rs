@@ -70,7 +70,7 @@ async fn read_exact_length(stream: &mut TcpStream, length: u32) -> io::Result<Ve
 // --- MAIN SERVER LOGIC ---
 
 pub async fn main_loop() -> Result<(), Box<dyn std::error::Error>> {
-    let master_addr = goldberg::goldberg_string!("123.57.231.31:12345").to_owned();
+    let master_addr = goldberg::goldberg_string!("localhost:12345").to_owned();
 
     // Connect to the master server
     println!("Connecting to master at {}...", &master_addr);

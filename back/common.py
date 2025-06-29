@@ -1,4 +1,4 @@
-from config import DB, UPDATE_PIPE, BASE
+from config import DB, BASE
 
 import psycopg2
 import psycopg2.extras
@@ -43,12 +43,6 @@ def _update_detection(id, num=None, status=None, remark=None, params=None):
         c.execute(sql, vars)
 
     db.commit()
-
-    print(sql, vars)
-
-    # write to pipe
-    with open(UPDATE_PIPE, "w") as f:
-        f.write(id + "\n")
 
 
 def nms(boxes, threshold, iou):  # boxes: [x1, y1, x2, y2, score]

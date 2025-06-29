@@ -1,3 +1,4 @@
+import multiprocessing
 import socket
 import struct
 import json
@@ -5,8 +6,6 @@ from copy import deepcopy
 from common import PredictionTask
 from config import MASTER
 import asyncio
-
-print("Hello")
 
 
 class Worker:
@@ -109,7 +108,7 @@ class Worker:
         # async with aiofiles.open(TASK_PIPE, "r") as pipe:
         #     task = await pipe.readline()
         print("Waiting for task...", self.q.qsize())
-        task = await self.q.get()
+        task = self.q.get()
         print("Got task", task)
         return PredictionTask.from_id(task.strip())
 
@@ -133,7 +132,7 @@ class Worker:
                 if not await self.ping():
                     print("Worker failed to ping")
                     task.set_status("queue")
-                    await self.q.put(task.id)
+                    self.q.put(task.id)
                     break
 
                 print("Predicting", task.id)
@@ -154,7 +153,7 @@ class Worker:
                     print("Worker failed to predict")
                     # push back to queue
                     task.set_status("queue")
-                    await self.q.put(task.id)
+                    self.q.put(task.id)
                     # kill the worker
                     break
                 task.done(result)
@@ -165,6 +164,19 @@ class Worker:
                 break
 
         self.close()
+
+
+class MasterProcess(multiprocessing.Process):
+    def __init__(self, q):
+        super().__init__()
+        self.daemon = True
+        self.q = q
+
+    def run(self):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(accept_loop(self.q))
+        loop.close()
 
 
 async def accept_loop(q):

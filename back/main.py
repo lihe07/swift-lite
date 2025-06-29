@@ -1,3 +1,4 @@
+import multiprocessing
 from sanic import Sanic, json, file, Blueprint, Request
 
 import threading
@@ -11,23 +12,14 @@ import psycopg2.extras
 import time
 import shutil
 import json as mjson
-from config import UPDATE_PIPE
-import socketio
-import aiofiles
 from common import make_conn, _update_detection, PredictionTask
-from asyncio import Queue
-import asyncio
-
-
-if not os.path.exists(UPDATE_PIPE):
-    os.mkfifo(UPDATE_PIPE)
-
+from multiprocessing import Queue
 
 # Ensure Table
 with make_conn().cursor() as c:
     c.execute(
         """
-        CREATE TABLE IF NOT EXISTS detections (id TEXT PRIMARY KEY, params TEXT, modified_at INTEGER, num INTEGER, remark TEXT, status TEXT)
+        CREATE TABLE IF NOT EXISTS detections (id TEXT PRIMARY KEY, params TEXT, modified_at INTEGER, created_at INTEGER, num INTEGER, remark TEXT, status TEXT)
         """
     )
 
@@ -40,69 +32,27 @@ with make_conn().cursor() as c:
 # Ensure ./detections/ exists
 os.makedirs("./detections", exist_ok=True)
 
-sio = socketio.AsyncServer(
-    async_mode="sanic",
-    logger=True,
-    cors_allowed_origins="*",
-    ping_timeout=5,
-    ping_interval=5,
-)
 app = Sanic(__name__)
-Sanic.start_method = "fork"
-sio.attach(app, "/api/ws")
-
 api = Blueprint("api", url_prefix="/api")
 
 
-@app.before_server_start
-async def before_server_start(app: Sanic, loop):
-    async def _emitter():
-        while True:
-            # read from pipe, asyncio
-            async with aiofiles.open(UPDATE_PIPE, "r") as f:
-                id = await f.readline()
-                id = id.strip()
-                if not id:
-                    continue
+@app.main_process_start
+async def setup(app: Sanic):
+    app.shared_ctx.tasks = Queue()
+    master_process = master.MasterProcess(app.shared_ctx.tasks)
+    master_process.start()
 
-            print("Emit", id)
-            db = make_conn()
-            with db.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as c:
-                c.execute("SELECT * FROM detections WHERE id = %s", (id,))
-                row = c.fetchone()
-
-            if row is None:
-                continue
-
-            row["params"] = mjson.loads(row["params"])
-
-            print("Emit", row)
-
-            asyncio.create_task(sio.emit("update_detection", row, room=id))
-            asyncio.create_task(sio.emit("update_detection", id, room="all"))
-
-    sio.start_background_task(_emitter)
-
-    app.ctx.tasks = Queue()
-
-    app.add_task(master.accept_loop(app.ctx.tasks))
     # find all queue tasks
     conn = make_conn()
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as c:
         c.execute("SELECT * FROM detections WHERE status = 'queue'")
         rows = c.fetchall()
 
-    print("Queue", rows, app.ctx.tasks.qsize())
+    print("Queue", rows, app.shared_ctx.tasks.qsize())
     for row in rows:
-        await app.ctx.tasks.put(row["id"])
+        app.shared_ctx.tasks.put(row["id"])
 
-    print("ok", app.ctx.tasks.qsize())
-
-
-@sio.on("join")
-async def join(sid, detection_id):
-    print(threading.current_thread())
-    await sio.enter_room(sid, detection_id)
+    print("ok", app.shared_ctx.tasks.qsize())
 
 
 @api.get("/")
@@ -149,19 +99,13 @@ async def new_detection(request: Request):
     # Write Database
     with conn.cursor() as c:
         c.execute(
-            "INSERT INTO detections (id, params, modified_at, remark, status) values (%s, %s, %s, %s, %s)",
-            (id, mjson.dumps(params), time.time(), "", "queue"),
+            "INSERT INTO detections (id, params, modified_at, created_at, remark, status) values (%s, %s, %s, %s, %s, %s)",
+            (id, mjson.dumps(params), time.time(), time.time(), "", "queue"),
         )
 
     # Add Task
-    print("Writing to pipe", id)
-    await request.app.ctx.tasks.put(id)
-
-    await sio.emit(
-        "new_detection",
-        id,
-        room="all",
-    )
+    print("Add task", id, "from process: ", multiprocessing.current_process().name)
+    request.app.shared_ctx.tasks.put(id)
 
     return _get_detection(request, id)
 
@@ -225,7 +169,7 @@ async def modify_detection(request: Request, id: str):
         task.nms_only()
         return _get_detection(request, id)
 
-    await request.app.ctx.tasks.put(id)
+    request.app.shared_ctx.tasks.put(id)
 
     return _get_detection(request, id)
 
@@ -312,7 +256,7 @@ async def get_detections(request: Request):
     if page < 1:
         return json({"error": "Page should be greater than 0"}, 400)
 
-    if sortby not in ["modified_at", "num", "status"]:
+    if sortby not in ["modified_at", "num", "status", "created_at"]:
         return json({"error": "Invalid sortby"}, 400)
 
     if sort not in ["asc", "desc"]:
@@ -321,7 +265,7 @@ async def get_detections(request: Request):
     conn = make_conn()
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as c:
         c.execute(
-            f"SELECT id,num,modified_at,remark,status FROM detections ORDER BY {sortby} {sort} NULLS LAST LIMIT %s OFFSET %s",
+            f"SELECT id,num,modified_at,created_at,remark,status FROM detections ORDER BY {sortby} {sort} NULLS LAST LIMIT %s OFFSET %s",
             (size, (page - 1) * size),
         )
         rows = c.fetchall()

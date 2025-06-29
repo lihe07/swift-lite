@@ -8,10 +8,18 @@ const router = useRouter();
 
 const columns = ref([
   {
+    title: "创建时间",
+    key: "created_at",
+    render(row) {
+      return new Date(row.created_at * 1000).toLocaleString();
+    },
+    sorter: true,
+    sortOrder: false,
+  },
+  {
     title: "修改时间",
     key: "modified_at",
     render(row) {
-      // Parse Unix timestamp to human readable string
       return new Date(row.modified_at * 1000).toLocaleString();
     },
     sorter: true,
@@ -106,6 +114,9 @@ async function fetchData(silent = false) {
     }
   }
 
+  // Memorize sorter
+  localStorage.setItem("sort", JSON.stringify({ sortby, sort }));
+
   sort = sort === 'ascend' ? 'asc' : 'desc'
 
   loading.value = !silent;
@@ -122,6 +133,19 @@ async function fetchData(silent = false) {
 
 
 onMounted(async () => {
+  // Restore sorter from localStorage
+  let sort = localStorage.getItem("sort");
+  if (sort) {
+    let parsedSort = JSON.parse(sort);
+    for (const col of columns.value) {
+      if (col.key === parsedSort.sortby) {
+        col.sortOrder = parsedSort.sort;
+      } else {
+        col.sortOrder = false;
+      }
+    }
+  }
+
   await fetchData();
   let pollingTimer = setInterval(() => {
     fetchData(true);
