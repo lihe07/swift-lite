@@ -1,5 +1,5 @@
 <script setup>
-import { NDataTable, NButtonGroup, NButton, NText } from "naive-ui";
+import { NDataTable, NButtonGroup, NButton, NText, NTime } from "naive-ui";
 import { useRouter } from "vue-router";
 import { h, ref, reactive, onMounted } from "vue";
 
@@ -11,20 +11,54 @@ const columns = ref([
     title: "创建时间",
     key: "created_at",
     render(row) {
-      return new Date(row.created_at * 1000).toLocaleString();
+      return [
+        h(
+          NTime,
+          {
+            time: row.created_at,
+            unix: true,
+            type: "relative"
+          }
+        ),
+        h("br"),
+        h(NTime,
+          {
+            time: row.created_at,
+            unix: true,
+          }
+        )
+      ]
     },
     sorter: true,
     sortOrder: false,
+    width: 170,
   },
   {
     title: "修改时间",
     key: "modified_at",
     render(row) {
-      return new Date(row.modified_at * 1000).toLocaleString();
+      return [
+        h(
+          NTime,
+          {
+            time: row.modified_at,
+            unix: true,
+            type: "relative"
+          }
+        ),
+        h("br"),
+        h(NTime,
+          {
+            time: row.modified_at,
+            unix: true,
+          }
+        )
+      ]
     },
     sorter: true,
     defaultSortOrder: "descend",
     sortOrder: "descend",
+    width: 170,
   },
   {
     title: "状态",

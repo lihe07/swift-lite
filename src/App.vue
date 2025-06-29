@@ -6,6 +6,8 @@ import {
   lightTheme,
   useThemeVars,
   NEl,
+  zhCN,
+  dateZhCN,
 } from "naive-ui";
 import { provide, ref, watch } from "vue";
 
@@ -41,7 +43,7 @@ const darkThemeOverrides = {
 
 <template>
   <n-config-provider :theme="isDark ? darkTheme : lightTheme"
-    :theme-overrides="isDark ? darkThemeOverrides : lightThemeOverrides">
+    :theme-overrides="isDark ? darkThemeOverrides : lightThemeOverrides" :locale="zhCN" :date-locale="dateZhCN">
     <n-el tag="div" style="
         background: var(--body-color);
         transition: background-color 0.3s var(--cubic-bezier-ease-in-out);
