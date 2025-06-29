@@ -97,7 +97,7 @@ function handleError({ event }) {
       <div style="text-align: center;">
         <n-text depth="3">
           &copy; 2021 - {{ new Date().getFullYear() }} Swift Lite by <n-a style="opacity: 0.5"
-            href="https://www.lihe.dev" target="_blank">
+            href="https://www.harvey-l.com" target="_blank">
             He Li
           </n-a>
         </n-text>

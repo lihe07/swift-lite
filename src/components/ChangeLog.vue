@@ -24,7 +24,8 @@ import { NTimeline, NTimelineItem, NScrollbar } from 'naive-ui'
       <br />
       优化网络请求. 加入更新日志.
     </n-timeline-item>
-    <n-timeline-item type="" title="1.0.0-alpha" content="测试版本上线" time="2024-03-14" />
+    <n-timeline-item type="" title="1.0.0-alpha" content="LITE 测试版本上线" time="2024-03-14" />
+    <n-timeline-item type="" title="0.1.0" content="早期版本上线" time="2021-06-23" />
   </n-timeline>
 </template>
 
