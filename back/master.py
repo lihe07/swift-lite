@@ -74,13 +74,13 @@ class Worker:
                 await self.loop.sock_sendall(self.s, img)
 
         # send json
-        query = json.dumps(query).encode()
-        query_len = len(query)
+        query_bytes = json.dumps(query).encode()
+        query_len = len(query_bytes)
         # self.s.sendall(struct.pack("!I", query_len))
         # self.s.sendall(query)
         # self.s.sendall(b"\0")
         await self.loop.sock_sendall(self.s, struct.pack("!I", query_len))
-        await self.loop.sock_sendall(self.s, query)
+        await self.loop.sock_sendall(self.s, query_bytes)
         await self.loop.sock_sendall(self.s, b"\0")
 
         print("Waiting for response")
@@ -155,6 +155,7 @@ class Worker:
                     # push back to queue
                     task.set_status("queue")
                     await self.q.put(task.id)
+                    # kill the worker
                     break
                 task.done(result)
                 print("Det time", task.id, result["det_time"])

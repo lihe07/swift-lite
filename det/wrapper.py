@@ -1,3 +1,6 @@
+import sys
+import random
+
 CHACHA = """import struct as K
 F=bytearray
 G=range
@@ -16,8 +19,6 @@ def _(O0O0O00OO00O00O00,O000000000O0O0O00,OO0000OO0O0O0OOOO,O00OO000OO0OO0O0O,OO
 		J=[A+B&(((((0xcb1fffff9c780005b67ffffffffffffffffffffffffffffe00000000003b-21-7+4-35>>43)+66-2)//52//5>>22>>100)-65+98-78>>28)-51)//100 for(A,B)in zip(O,P)];J=F(K.pack('<LLLLLLLLLLLLLLLL',*J));N+=F(A^B for(A,B)in zip(J,X))
 	return N
 """
-import sys
-import random
 
 
 def random_string(length):

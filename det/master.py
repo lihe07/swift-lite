@@ -127,18 +127,17 @@ if not w.ping():
 
 
 resp = w.predict(
-    # "https://lms.d.zhan.com/zhanlms/addon_homework/2024/03/151623565f0f8847456f/big.jpg",
-    "https://lite.bwrrc.org.cn/big.jpg",
+    "https://lms.d.zhan.com/zhanlms/addon_homework/2024/03/151623565f0f8847456f/big.jpg",
     # "/home/lihe07/Desktop/HIC-Yolo/big.jpg",
-    0.1,
+    0.3,
     0.1,
     0.3,
-    1.0,
+    0.2,
 )
 print(resp)
 
 if resp:
-    im = cv2.imread("/home/lihe07/Desktop/HIC-Yolo/big.jpg")
+    im = cv2.imread("/home/lihe07/Documents/HIC-Yolo/big.jpg")
     for box in resp["boxes"]:
         x1, y1, x2, y2 = map(int, box[:4])
         cv2.rectangle(im, (x1, y1), (x2, y2), (0, 255, 0), 2)
