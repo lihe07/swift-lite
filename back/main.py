@@ -45,7 +45,9 @@ async def setup(app: Sanic):
     # find all queue tasks
     conn = make_conn()
     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as c:
-        c.execute("SELECT * FROM detections WHERE status = 'queue'")
+        c.execute(
+            "SELECT * FROM detections WHERE status = 'queue' OR status = 'processing'"
+        )
         rows = c.fetchall()
 
     print("Queue", rows, app.shared_ctx.tasks.qsize())
