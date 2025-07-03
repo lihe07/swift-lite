@@ -1,7 +1,7 @@
 import multiprocessing
 from sanic import Sanic, json, file, Blueprint, Request
 
-import threading
+import asyncio
 import uuid
 import os
 import cv2
@@ -25,6 +25,12 @@ with make_conn().cursor() as c:
 
     c.execute(
         """
+        CREATE TABLE IF NOT EXISTS workers (id TEXT PRIMARY KEY, name TEXT, remote_addr TEXT, connected_at INTEGER, last_ping INTEGER, tasks_done INTEGER, avg_det_time FLOAT)
+        """
+    )
+
+    c.execute(
+        """
         CREATE TABLE IF NOT EXISTS april_fools (id SERIAL PRIMARY KEY, created_at TIMESTAMP)
         """
     )
@@ -34,6 +40,21 @@ os.makedirs("./detections", exist_ok=True)
 
 app = Sanic(__name__)
 api = Blueprint("api", url_prefix="/api")
+
+
+async def expire_workers():
+    while True:
+        await asyncio.sleep(30)
+        conn = make_conn()
+        with conn.cursor() as c:
+            c.execute(
+                "DELETE FROM workers WHERE last_ping < %s",
+                (int(time.time()) - 30,),
+            )
+        conn.commit()
+
+
+app.add_task(expire_workers)
 
 
 @app.main_process_start
@@ -242,6 +263,17 @@ def get_detection_origin_image(_, id: str, im: str):
         return json({"error": "Not Found"}, 404)
 
     return file(path, max_age=2629746)
+
+
+@api.get("/workers")
+async def get_workers(_: Request):
+    conn = make_conn()
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as c:
+        c.execute(
+            "SELECT id, name, connected_at, avg_det_time, last_ping, tasks_done FROM workers ORDER BY last_ping DESC"
+        )
+        rows = c.fetchall()
+    return json({"data": rows})
 
 
 @api.get("/detections")

@@ -3,14 +3,23 @@ import socket
 import struct
 import json
 from copy import deepcopy
-from common import PredictionTask
+import uuid
+from common import PredictionTask, make_conn
 from config import MASTER
 import queue
+import time
 
 import threading
 
 
 class Worker(threading.Thread):
+    # Statistics
+    connected_at: int
+    tasks_done: int
+    remote_addr: str
+    last_ping: int
+    avg_det_time: float
+
     def __init__(
         self,
         s: socket.socket,
@@ -19,6 +28,13 @@ class Worker(threading.Thread):
         super().__init__()
         self.s = s
         self.q = q
+        self.conn = make_conn()
+        self.id = str(uuid.uuid4())
+        self.connected_at = int(time.time())
+        self.last_ping = self.connected_at
+        self.tasks_done = 0
+        self.remote_addr = s.getpeername()[0] if s else "unknown"
+        self.avg_det_time = 0.0
 
     def receive_or_timeout(self, size: int, timeout: float):
         self.s.settimeout(timeout)
@@ -44,6 +60,8 @@ class Worker(threading.Thread):
         print(response)
         if response != b"pong\0":
             return False
+
+        self.last_ping = int(time.time())
 
         return True
 
@@ -99,8 +117,13 @@ class Worker(threading.Thread):
             return None
 
         print("Ok")
+        data_obj = json.loads(data)
+        self.avg_det_time = (
+            self.avg_det_time * self.tasks_done + data_obj["det_time"]
+        ) / (self.tasks_done + 1)
 
-        return json.loads(data)
+        self.tasks_done += 1
+        return data_obj
 
     def read_task(self, timeout: float):
         print("Waiting for task...", self.q.qsize())
@@ -111,6 +134,33 @@ class Worker(threading.Thread):
         except queue.Empty:
             return None
 
+    def sync_to_db(self):
+        # Sync worker state to the database
+        # UPDATE or INSERT
+        with self.conn.cursor() as c:
+            c.execute(
+                """
+                INSERT INTO workers (id, name, connected_at, last_ping, tasks_done, remote_addr, avg_det_time)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE
+                SET name = EXCLUDED.name,
+                    connected_at = EXCLUDED.connected_at,
+                    last_ping = EXCLUDED.last_ping,
+                    tasks_done = EXCLUDED.tasks_done,
+                    remote_addr = EXCLUDED.remote_addr,
+                    avg_det_time = EXCLUDED.avg_det_time;
+                """,
+                (
+                    self.id,
+                    multiprocessing.current_process().name,
+                    self.connected_at,
+                    self.last_ping,
+                    self.tasks_done,
+                    self.remote_addr,
+                    self.avg_det_time,
+                ),
+            )
+
     def run(self) -> None:
         if not self.ping():
             return
@@ -118,6 +168,7 @@ class Worker(threading.Thread):
         print("Qsize", self.q.qsize())
         while True:
             try:
+                self.sync_to_db()
                 task = self.read_task(timeout=5)
 
                 if task is None:
