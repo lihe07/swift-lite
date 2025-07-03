@@ -27,8 +27,14 @@ onMounted(async () => {
 </script>
 
 <template>
-  <n-grid cols="1 600:2">
-    <n-grid-item v-for="worker in workers.data" :key="worker.id">
+  <div v-if="workers.data && workers.data.length === 0" style="text-align: center;">
+
+    <h3>🔥
+      无计算节点，服务中止！
+    </h3>
+  </div>
+  <n-grid cols="1 600:2" x-gap="10" y-gap="10" v-if="workers.data">
+    <n-grid-item v-for="worker in workers.data" :key="worker.id" v-if="workers.data">
       <n-card size="small" :title="'🟢 ' + worker.name">
         <n-grid cols="2" y-gap="10">
           <n-grid-item>
@@ -48,7 +54,7 @@ onMounted(async () => {
           </n-grid-item>
           <n-grid-item>
             <n-statistic label="平均耗时">
-              {{ worker.avg_det_time }} s
+              {{ worker.avg_det_time.toFixed(2) }} 秒
             </n-statistic>
           </n-grid-item>
         </n-grid>
