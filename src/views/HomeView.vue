@@ -18,6 +18,7 @@ import {
 } from "@vicons/fluent";
 import { inject } from "vue";
 import RecentList from "@/components/RecentList.vue";
+import Workers from "@/components/Workers.vue";
 import ChangeLog from "@/components/ChangeLog.vue";
 import AprilFool from "@/components/AprilFool.vue";
 import { useRouter } from "vue-router";
@@ -76,6 +77,16 @@ function handleError({ event }) {
             </n-p>
           </n-upload-dragger>
         </n-upload>
+      </n-card>
+
+      <div class="space"></div>
+
+      <n-card title="计算节点">
+        <template #header-extra>
+          闲置机器？
+          <n-a href="https://www.harvey-l.com/contact/" target="_blank">加入计算</n-a>
+        </template>
+        <Workers></Workers>
       </n-card>
 
       <div class="space"></div>
