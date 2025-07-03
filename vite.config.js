@@ -13,8 +13,8 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      // "/api": "http://back.bwrrc.org.cn/",
-      "/api": "http://localhost:20000/"
+      "/api": "http://main.bwrrc.org.cn/",
+      // "/api": "http://localhost:20000/"
     }
   }
 })

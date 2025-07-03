@@ -3,6 +3,7 @@ import { ref, onMounted } from "vue";
 import { NGrid, NGridItem, NCard, NTime, NCol, NRow, NStatistic } from "naive-ui";
 
 const workers = ref([]);
+const now = ref(Date.now());
 
 onMounted(async () => {
 
@@ -11,6 +12,7 @@ onMounted(async () => {
       .then(response => response.json())
       .then(data => {
         workers.value = data;
+        now.value = Date.now();
       })
       .catch(error => console.error("Error fetching workers:", error));
   }, 5000);
@@ -39,12 +41,12 @@ onMounted(async () => {
         <n-grid cols="2" y-gap="10">
           <n-grid-item>
             <n-statistic label="首次连接">
-              <n-time :time="worker.connected_at" unix type="relative" />
+              <n-time :time="worker.connected_at" :to="now / 1000" unix type="relative" />
             </n-statistic>
           </n-grid-item>
           <n-grid-item>
             <n-statistic label="最新连接">
-              <n-time :time="worker.last_ping" unix type="relative" />
+              <n-time :time="worker.last_ping" :to="now / 1000" unix type="relative" />
             </n-statistic>
           </n-grid-item>
           <n-grid-item>
