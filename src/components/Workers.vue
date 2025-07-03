@@ -30,18 +30,28 @@ onMounted(async () => {
   <n-grid cols="1 600:2">
     <n-grid-item v-for="worker in workers.data" :key="worker.id">
       <n-card size="small" :title="'🟢 ' + worker.name">
-        <n-row>
-          <n-col :span="12">
+        <n-grid cols="2" y-gap="10">
+          <n-grid-item>
             <n-statistic label="首次连接">
               <n-time :time="worker.connected_at" unix type="relative" />
             </n-statistic>
-          </n-col>
-          <n-col :span="12">
+          </n-grid-item>
+          <n-grid-item>
+            <n-statistic label="最新连接">
+              <n-time :time="worker.last_ping" unix type="relative" />
+            </n-statistic>
+          </n-grid-item>
+          <n-grid-item>
             <n-statistic label="处理任务量">
               {{ worker.tasks_done }}
             </n-statistic>
-          </n-col>
-        </n-row>
+          </n-grid-item>
+          <n-grid-item>
+            <n-statistic label="平均耗时">
+              {{ worker.avg_det_time }} s
+            </n-statistic>
+          </n-grid-item>
+        </n-grid>
       </n-card>
     </n-grid-item>
   </n-grid>

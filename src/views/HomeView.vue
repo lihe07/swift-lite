@@ -83,7 +83,7 @@ function handleError({ event }) {
 
       <n-card title="计算节点">
         <template #header-extra>
-          闲置机器？
+          机器闲置？
           <n-a href="https://www.harvey-l.com/contact/" target="_blank">加入计算</n-a>
         </template>
         <Workers></Workers>
