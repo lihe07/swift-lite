@@ -1,14 +1,14 @@
 use image::DynamicImage;
 use itertools::iproduct;
-use ndarray::{Array, Array3, Array4, Axis, s};
+use ndarray::{s, Array, Array3, Array4, Axis};
 use ort::{
     execution_providers::CPUExecutionProvider,
-    session::{Session, SessionOutputs, builder::GraphOptimizationLevel},
+    session::{builder::GraphOptimizationLevel, Session, SessionOutputs},
     value::TensorRef,
 };
 use thiserror::Error;
 
-use crate::nms::{BBOX, nms_center_opt};
+use crate::nms::{nms_center_opt, BBOX};
 
 // --- CONSTANTS ---
 const BATCH_SIZE: usize = 32;
@@ -49,9 +49,12 @@ pub struct Detector {
 impl Detector {
     /// Creates a new Detector by loading the ONNX model.
     pub fn new() -> Result<Self, DetectionError> {
-        let session = Session::builder()?
-            .with_optimization_level(GraphOptimizationLevel::Level3)?
-            .with_execution_providers([CPUExecutionProvider::default().build()])?
+        let session = Session::builder()
+            .map_err(ort::Error::from)?
+            .with_optimization_level(GraphOptimizationLevel::Level3)
+            .map_err(ort::Error::from)?
+            .with_execution_providers([CPUExecutionProvider::default().build()])
+            .map_err(ort::Error::from)?
             .commit_from_memory(MODEL)?;
 
         Ok(Self { session })

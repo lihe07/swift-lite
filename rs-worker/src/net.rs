@@ -69,7 +69,7 @@ async fn read_exact_length(stream: &mut TcpStream, length: u32) -> io::Result<Ve
 
 // --- MAIN SERVER LOGIC ---
 
-pub async fn main_loop() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn main_loop(name: &str) -> Result<(), Box<dyn std::error::Error>> {
     let master_addr = goldberg::goldberg_string!("localhost:12345").to_owned();
 
     // Connect to the master server
@@ -98,8 +98,11 @@ pub async fn main_loop() -> Result<(), Box<dyn std::error::Error>> {
 
         match command.as_slice() {
             b"ping" => {
-                // println!("Received 'ping', sending 'pong'");
-                stream.write_all(b"pong\0").await?;
+                let mut buf = format!("pong\0{}\0", name);
+                if buf.len() < 50 {
+                    buf.push_str(&"\0".repeat(50 - buf.len())); // Pad to 50 bytes for consistent
+                }
+                stream.write_all(buf.as_bytes()).await?;
             }
             b"predict" | b"predict_url" => {
                 let t00 = Instant::now();

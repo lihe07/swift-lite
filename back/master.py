@@ -20,6 +20,9 @@ class Worker(threading.Thread):
     last_ping: int
     avg_det_time: float
 
+    # Custom
+    name: str
+
     def __init__(
         self,
         s: socket.socket,
@@ -35,6 +38,7 @@ class Worker(threading.Thread):
         self.tasks_done = 0
         self.remote_addr = s.getpeername()[0] if s else "unknown"
         self.avg_det_time = 0.0
+        self.name = multiprocessing.current_process().name
 
     def receive_or_timeout(self, size: int, timeout: float):
         self.s.settimeout(timeout)
@@ -56,12 +60,15 @@ class Worker(threading.Thread):
     def ping(self):
         self.s.sendall(b"ping\0")
 
-        response = self.receive_or_timeout(5, 3)
+        response = self.receive_or_timeout(50, 3)
         print(response)
-        if response != b"pong\0":
+        if not response or not response.startswith(b"pong\0"):
             return False
 
         self.last_ping = int(time.time())
+        name = response[5:-1].strip(b"\0")
+        if name:
+            self.name = name.decode()
 
         return True
 
@@ -71,6 +78,14 @@ class Worker(threading.Thread):
             self.s.close()
         except Exception as e:
             print("Failed to close", e, "Already closed?")
+        finally:
+            with self.conn.cursor() as c:
+                c.execute(
+                    """
+                    DELETE FROM workers WHERE id = %s;
+                    """,
+                    (self.id,),
+                )
 
     def predict(
         self,
@@ -152,7 +167,7 @@ class Worker(threading.Thread):
                 """,
                 (
                     self.id,
-                    multiprocessing.current_process().name,
+                    self.name,
                     self.connected_at,
                     self.last_ping,
                     self.tasks_done,
@@ -163,6 +178,9 @@ class Worker(threading.Thread):
 
     def run(self) -> None:
         if not self.ping():
+            print("Worker failed to ping on start")
+            # Shutdown
+            self.close()
             return
 
         print("Qsize", self.q.qsize())
