@@ -5,7 +5,7 @@ use thiserror::Error;
 use tokio::{
     io::{self, AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
-    time::Instant,
+    time::{timeout, Duration, Instant},
 };
 
 #[derive(Error, Debug)]
@@ -24,6 +24,8 @@ pub enum WorkerError {
     Reqwest(#[from] reqwest::Error),
     #[error("Invalid command from master")]
     InvalidCommand,
+    #[error("Ping timeout: no data received from master in 10s")]
+    PingTimeout,
 }
 
 /// The JSON query received from the master.
@@ -84,13 +86,17 @@ pub async fn main_loop(name: &str) -> Result<(), Box<dyn std::error::Error>> {
     // Main worker loop
     loop {
         // Read a command from the master, terminated by a null byte
-        let command = match read_until_zero(&mut stream).await {
-            Ok(cmd) if cmd.is_empty() => {
+        let command = match timeout(Duration::from_secs(10), read_until_zero(&mut stream)).await {
+            Err(_elapsed) => {
+                println!("Ping timeout: no data from master in 10s, reconnecting...");
+                return Err(Box::new(WorkerError::PingTimeout));
+            }
+            Ok(Ok(cmd)) if cmd.is_empty() => {
                 // println!("Master closed the connection.");
                 break; // Connection closed
             }
-            Ok(cmd) => cmd,
-            Err(_) => {
+            Ok(Ok(cmd)) => cmd,
+            Ok(Err(_)) => {
                 // eprintln!("Failed to read command from master: {e}");
                 break;
             }
