@@ -78,7 +78,7 @@ class Worker(threading.Thread):
             self.s.close()
         except Exception as e:
             print("Failed to close", e, "Already closed?")
-        finally:
+        try:
             with self.conn.cursor() as c:
                 c.execute(
                     """
@@ -86,6 +86,13 @@ class Worker(threading.Thread):
                     """,
                     (self.id,),
                 )
+        except Exception as e:
+            print("Failed to delete worker row", e)
+        finally:
+            try:
+                self.conn.close()
+            except Exception as e:
+                print("Failed to close DB conn", e)
 
     def predict(
         self,
@@ -253,9 +260,18 @@ class MasterProcess(multiprocessing.Process):
 
         # accepting loop
         while True:
-            conn, addr = s.accept()
-            print("Connection from", addr)
-            w = Worker(conn, self.q)
-            w.start()
-
-            workers.append(w)
+            conn = None
+            try:
+                conn, addr = s.accept()
+                print("Connection from", addr)
+                workers = [x for x in workers if x.is_alive()]
+                w = Worker(conn, self.q)
+                w.start()
+                workers.append(w)
+            except Exception as e:
+                print("Accept loop error:", e)
+                if conn is not None:
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
