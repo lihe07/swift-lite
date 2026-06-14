@@ -278,10 +278,11 @@ async fn delete_detection(
 
 async fn get_workers(State(s): State<AppState>) -> Result<Json<Value>, AppError> {
     let c = s.pool.get().await?;
+    let cutoff = crate::master::online_cutoff(db::now());
     let rows = c
         .query(
-            "SELECT id, name, connected_at, avg_det_time, last_ping, tasks_done FROM workers ORDER BY last_ping DESC",
-            &[],
+            "SELECT id, name, connected_at, avg_det_time, last_ping, tasks_done FROM workers WHERE last_ping >= $1 ORDER BY last_ping DESC",
+            &[&cutoff],
         )
         .await?;
     let data: Vec<Value> = rows
