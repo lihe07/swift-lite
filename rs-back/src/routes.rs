@@ -125,7 +125,7 @@ async fn new_detection(
         )
         .await?;
     }
-    let _ = s.tx.send(id.clone());
+    let _ = s.tx.try_send(id.clone());
 
     match fetch_detection_json(&s.pool, &id).await? {
         Some(obj) => Ok(Json(obj)),
@@ -233,7 +233,7 @@ async fn put_params(s: AppState, id: String, body: Value) -> Result<Json<Value>,
         return current_detection(&s, &id).await;
     }
 
-    let _ = s.tx.send(id.clone());
+    let _ = s.tx.try_send(id.clone());
     current_detection(&s, &id).await
 }
 
@@ -391,7 +391,7 @@ mod route_tests {
     // a matchit conflict panic, and exercises the no-DB code paths.
     fn real_router() -> Router {
         let pool = crate::db::make_pool("postgresql://swift:swift@localhost:5432/swift").unwrap();
-        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let (tx, _rx) = async_channel::unbounded::<String>();
         router(AppState { pool, tx })
     }
 

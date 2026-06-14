@@ -2,13 +2,16 @@ use crate::db::{self, Db};
 use crate::proto;
 use crate::task::PredictionTask;
 use serde_json::json;
-use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, Mutex};
 use tokio::time::{timeout, Duration};
 
-pub type TaskTx = mpsc::UnboundedSender<String>;
-pub type TaskRx = Arc<Mutex<mpsc::UnboundedReceiver<String>>>;
+// The task queue is a multi-consumer (MPMC) channel: every connected worker holds
+// a clone of the receiver and awaits `recv()` independently. This is deliberate —
+// an earlier `Arc<Mutex<mpsc::Receiver>>` design serialized the workers, because a
+// worker parked in `read_task` held the lock for up to 5s and starved the others,
+// so their remote workers hit the 10s ping timeout and reconnected forever.
+pub type TaskTx = async_channel::Sender<String>;
+pub type TaskRx = async_channel::Receiver<String>;
 
 /// A worker is "online" if its last_ping is within this many seconds of now.
 pub const ONLINE_SECS: i32 = 60;
@@ -35,6 +38,28 @@ pub fn seed_identity(existing: Option<(i64, f64, i32)>, now: i32) -> (i64, f64, 
     }
 }
 
+/// Bind the master TCP listener, retrying briefly so a transient `Address in use`
+/// (e.g. racing a just-stopped predecessor for the port) self-heals without a
+/// process restart. Returns the last error if every attempt fails.
+async fn bind_listener(addr: &str, attempts: u32, delay: Duration) -> std::io::Result<TcpListener> {
+    let mut last_err = None;
+    for i in 0..attempts {
+        match TcpListener::bind(addr).await {
+            Ok(l) => return Ok(l),
+            Err(e) => {
+                tracing::warn!(
+                    "master bind {addr} failed (attempt {}/{}): {e}",
+                    i + 1,
+                    attempts
+                );
+                last_err = Some(e);
+                tokio::time::sleep(delay).await;
+            }
+        }
+    }
+    Err(last_err.expect("attempts >= 1"))
+}
+
 /// Spawn the listener, the expirer, and re-enqueue outstanding tasks.
 pub async fn start(pool: Db, addr: &str, tx: TaskTx, rx: TaskRx) -> anyhow::Result<()> {
     // Re-enqueue outstanding work (startup requeue).
@@ -48,7 +73,7 @@ pub async fn start(pool: Db, addr: &str, tx: TaskTx, rx: TaskRx) -> anyhow::Resu
             .await?;
         for row in rows {
             let id: String = row.get("id");
-            let _ = tx.send(id);
+            let _ = tx.try_send(id);
         }
     }
 
@@ -70,7 +95,7 @@ pub async fn start(pool: Db, addr: &str, tx: TaskTx, rx: TaskRx) -> anyhow::Resu
         });
     }
 
-    let listener = TcpListener::bind(addr).await?;
+    let listener = bind_listener(addr, 10, Duration::from_secs(1)).await?;
     tracing::info!("master accepting on {addr}");
     loop {
         let (sock, peer) = listener.accept().await?;
@@ -205,12 +230,12 @@ impl Worker {
         Ok(())
     }
 
-    /// Pull next task id from the shared queue, waiting up to `secs`.
+    /// Pull next task id from the shared MPMC queue, waiting up to `secs`.
+    /// Does not hold any lock across the wait, so workers never starve each other.
     async fn read_task(&self, secs: u64) -> Option<String> {
-        let mut rx = self.rx.lock().await;
-        match timeout(Duration::from_secs(secs), rx.recv()).await {
-            Ok(Some(id)) => Some(id),
-            _ => None,
+        match timeout(Duration::from_secs(secs), self.rx.recv()).await {
+            Ok(Ok(id)) => Some(id),
+            _ => None, // timed out, or channel closed
         }
     }
 
@@ -279,7 +304,7 @@ impl Worker {
             };
             if !self.ping().await {
                 task.set_status(&self.pool, "queue").await.ok();
-                let _ = self.tx.send(task.id.clone());
+                let _ = self.tx.try_send(task.id.clone());
                 anyhow::bail!("ping failed before predict");
             }
             task.set_status(&self.pool, "processing").await.ok();
@@ -303,7 +328,7 @@ impl Worker {
                 }
                 None => {
                     task.set_status(&self.pool, "queue").await.ok();
-                    let _ = self.tx.send(task.id.clone());
+                    let _ = self.tx.try_send(task.id.clone());
                     anyhow::bail!("predict failed");
                 }
             }
@@ -338,5 +363,46 @@ mod helper_tests {
         assert_eq!(td, 7);
         assert_eq!(avg, 1.5);
         assert_eq!(ca, 500); // first-seen preserved, NOT reset to 9000
+    }
+
+    // Regression test for the worker-starvation bug: two consumers sharing the
+    // queue receiver must both be able to wait and receive concurrently. With the
+    // old Arc<Mutex<mpsc>> design one consumer held the lock across its wait and
+    // starved the other (so its remote worker hit the 10s ping timeout).
+    #[tokio::test]
+    async fn mpmc_receiver_does_not_starve_concurrent_consumers() {
+        let (tx, rx) = async_channel::unbounded::<String>();
+        let rx2 = rx.clone();
+        let h1 = tokio::spawn(async move {
+            timeout(Duration::from_secs(1), rx.recv()).await
+        });
+        let h2 = tokio::spawn(async move {
+            timeout(Duration::from_secs(1), rx2.recv()).await
+        });
+        // let both consumers park on recv() before any message is sent
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        tx.try_send("a".into()).unwrap();
+        tx.try_send("b".into()).unwrap();
+        let r1 = h1.await.unwrap();
+        let r2 = h2.await.unwrap();
+        assert!(r1.is_ok() && r1.unwrap().is_ok(), "consumer 1 did not receive");
+        assert!(r2.is_ok() && r2.unwrap().is_ok(), "consumer 2 did not receive");
+    }
+
+    #[tokio::test]
+    async fn bind_listener_succeeds_on_free_port() {
+        let l = bind_listener("127.0.0.1:0", 3, Duration::from_millis(10))
+            .await
+            .expect("should bind a free ephemeral port");
+        drop(l);
+    }
+
+    #[tokio::test]
+    async fn bind_listener_errors_when_port_stays_held() {
+        let held = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = held.local_addr().unwrap().to_string();
+        // port is held for the whole (short) retry window -> all attempts fail
+        let r = bind_listener(&addr, 3, Duration::from_millis(10)).await;
+        assert!(r.is_err());
     }
 }

@@ -11,9 +11,6 @@ mod proto;
 mod routes;
 mod task;
 
-use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
@@ -23,10 +20,13 @@ async fn main() -> anyhow::Result<()> {
     db::ensure_tables(&pool).await?;
     std::fs::create_dir_all("./detections")?;
 
-    let (tx, rx) = mpsc::unbounded_channel::<String>();
-    let rx: master::TaskRx = Arc::new(Mutex::new(rx));
+    // MPMC task queue: every worker holds a receiver clone (see master.rs).
+    let (tx, rx) = async_channel::unbounded::<String>();
 
-    // master listener (+ expirer + startup requeue)
+    // master listener (+ expirer + startup requeue). If the master ever stops
+    // (e.g. it cannot bind the port), exit the whole process so systemd's
+    // `Restart=always` relaunches it — rather than silently serving HTTP with a
+    // dead master and never processing detections.
     {
         let pool = pool.clone();
         let tx = tx.clone();
@@ -34,7 +34,8 @@ async fn main() -> anyhow::Result<()> {
         let addr = cfg.master.clone();
         tokio::spawn(async move {
             if let Err(e) = master::start(pool, &addr, tx, rx).await {
-                tracing::error!("master stopped: {e}");
+                tracing::error!("master stopped, exiting for restart: {e}");
+                std::process::exit(1);
             }
         });
     }
