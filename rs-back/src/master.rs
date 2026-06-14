@@ -87,7 +87,7 @@ pub async fn start(pool: Db, addr: &str, tx: TaskTx, rx: TaskRx) -> anyhow::Resu
                     let _ = c
                         .execute(
                             "DELETE FROM workers WHERE last_ping < $1",
-                            &[&(db::now() - 30)],
+                            &[&purge_cutoff(db::now())],
                         )
                         .await;
                 }
@@ -114,6 +114,9 @@ pub async fn start(pool: Db, addr: &str, tx: TaskTx, rx: TaskRx) -> anyhow::Resu
     }
 }
 
+// NOTE: the worker row is keyed by the worker-supplied name (`id == name`).
+// Two simultaneous connections sharing a name will share/clobber one row; names
+// are expected to be unique per worker, so this is accepted.
 struct Worker {
     sock: TcpStream,
     id: String,
@@ -171,6 +174,42 @@ impl Worker {
             self.name = name;
         }
         true
+    }
+
+    /// After the first ping (name known), key the row by name and seed stats
+    /// from any existing row so they accumulate across reconnects.
+    async fn load_identity(&mut self) -> anyhow::Result<()> {
+        self.id = self.name.clone();
+        let existing = {
+            let c = self.pool.get().await?;
+            let rows = c
+                .query(
+                    "SELECT tasks_done, avg_det_time, connected_at FROM workers WHERE id = $1",
+                    &[&self.id],
+                )
+                .await?;
+            rows.first().map(|r| {
+                (
+                    r.try_get::<_, Option<i32>>("tasks_done")
+                        .ok()
+                        .flatten()
+                        .unwrap_or(0) as i64,
+                    r.try_get::<_, Option<f64>>("avg_det_time")
+                        .ok()
+                        .flatten()
+                        .unwrap_or(0.0),
+                    r.try_get::<_, Option<i32>>("connected_at")
+                        .ok()
+                        .flatten()
+                        .unwrap_or(self.connected_at),
+                )
+            })
+        };
+        let (tasks_done, avg, connected_at) = seed_identity(existing, self.connected_at);
+        self.tasks_done = tasks_done;
+        self.avg_det_time = avg;
+        self.connected_at = connected_at;
+        Ok(())
     }
 
     /// Upsert the worker stats row.
@@ -251,6 +290,7 @@ impl Worker {
         if !self.ping().await {
             anyhow::bail!("failed initial ping");
         }
+        self.load_identity().await?;
         loop {
             self.sync_to_db().await.ok();
             let Some(task_id) = self.read_task(5).await else {
@@ -296,10 +336,7 @@ impl Worker {
     }
 
     async fn cleanup(&self) {
-        if let Ok(c) = self.pool.get().await {
-            let _ = c
-                .execute("DELETE FROM workers WHERE id = $1", &[&self.id])
-                .await;
-        }
+        // Intentionally does NOT delete the worker row: stats persist across
+        // reconnects and are only removed by the 1-week purge in `start`.
     }
 }
