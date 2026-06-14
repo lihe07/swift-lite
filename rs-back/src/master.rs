@@ -10,6 +10,56 @@ use tokio::time::{timeout, Duration};
 pub type TaskTx = mpsc::UnboundedSender<String>;
 pub type TaskRx = Arc<Mutex<mpsc::UnboundedReceiver<String>>>;
 
+/// A worker is "online" if its last_ping is within this many seconds of now.
+pub const ONLINE_SECS: i32 = 60;
+/// A worker row is purged after this many seconds without any ping (1 week).
+pub const PURGE_SECS: i32 = 604_800;
+
+/// last_ping cutoff (inclusive lower bound) for a worker to count as online.
+pub fn online_cutoff(now: i32) -> i32 {
+    now - ONLINE_SECS
+}
+
+/// last_ping cutoff (exclusive upper bound) below which a row is purged.
+pub fn purge_cutoff(now: i32) -> i32 {
+    now - PURGE_SECS
+}
+
+/// Seed (tasks_done, avg_det_time, connected_at) for a connecting worker.
+/// If a prior row exists, accumulate from it (preserving first-seen connected_at);
+/// otherwise start fresh anchored at `now`.
+pub fn seed_identity(existing: Option<(i64, f64, i32)>, now: i32) -> (i64, f64, i32) {
+    match existing {
+        Some((tasks_done, avg, connected_at)) => (tasks_done, avg, connected_at),
+        None => (0, 0.0, now),
+    }
+}
+
+#[cfg(test)]
+mod helper_tests {
+    use super::*;
+
+    #[test]
+    fn cutoffs() {
+        assert_eq!(online_cutoff(1000), 1000 - 60);
+        assert_eq!(purge_cutoff(1_000_000), 1_000_000 - 604_800);
+    }
+
+    #[test]
+    fn seed_fresh_when_no_prior_row() {
+        assert_eq!(seed_identity(None, 1234), (0, 0.0, 1234));
+    }
+
+    #[test]
+    fn seed_accumulates_and_preserves_first_connection() {
+        // prior row: 7 tasks, avg 1.5s, first connected at t=500; reconnecting at t=9000
+        let (td, avg, ca) = seed_identity(Some((7, 1.5, 500)), 9000);
+        assert_eq!(td, 7);
+        assert_eq!(avg, 1.5);
+        assert_eq!(ca, 500); // first-seen preserved, NOT reset to 9000
+    }
+}
+
 /// Spawn the listener, the expirer, and re-enqueue outstanding tasks.
 pub async fn start(pool: Db, addr: &str, tx: TaskTx, rx: TaskRx) -> anyhow::Result<()> {
     // Re-enqueue outstanding work (startup requeue).
