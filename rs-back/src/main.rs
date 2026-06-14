@@ -2,6 +2,7 @@
 
 mod config;
 mod db;
+mod draw;
 mod error;
 mod nms;
 mod params;
