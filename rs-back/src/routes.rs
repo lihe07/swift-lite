@@ -384,4 +384,49 @@ mod route_tests {
         assert_eq!(s2, 200);
         assert_eq!(v2["message"], "Hello World");
     }
+
+    // Build the production router with a lazy (never-connected) pool. This proves the
+    // full route table — including the merged `/detections/:id/:seg` — registers without
+    // a matchit conflict panic, and exercises the no-DB code paths.
+    fn real_router() -> Router {
+        let pool = crate::db::make_pool("postgresql://swift:swift@localhost:5432/swift").unwrap();
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        router(AppState { pool, tx })
+    }
+
+    async fn real_status(method: &str, uri: &str) -> u16 {
+        real_router()
+            .oneshot(
+                Request::builder()
+                    .method(method)
+                    .uri(uri)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap()
+            .status()
+            .as_u16()
+    }
+
+    #[tokio::test]
+    async fn production_router_builds_and_serves_hello() {
+        // construction alone would panic on a route conflict
+        assert_eq!(real_status("GET", "/api/").await, 200);
+        assert_eq!(real_status("GET", "/api").await, 200);
+    }
+
+    #[tokio::test]
+    async fn missing_image_is_404_without_db() {
+        // get_segment checks the file before touching the DB, so this needs no live DB.
+        assert_eq!(
+            real_status("GET", "/api/detections/does-not-exist/origin").await,
+            404
+        );
+        // unknown segment also 404s before any DB access
+        assert_eq!(
+            real_status("GET", "/api/detections/does-not-exist/bogus").await,
+            404
+        );
+    }
 }
