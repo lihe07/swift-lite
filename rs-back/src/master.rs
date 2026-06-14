@@ -35,31 +35,6 @@ pub fn seed_identity(existing: Option<(i64, f64, i32)>, now: i32) -> (i64, f64, 
     }
 }
 
-#[cfg(test)]
-mod helper_tests {
-    use super::*;
-
-    #[test]
-    fn cutoffs() {
-        assert_eq!(online_cutoff(1000), 1000 - 60);
-        assert_eq!(purge_cutoff(1_000_000), 1_000_000 - 604_800);
-    }
-
-    #[test]
-    fn seed_fresh_when_no_prior_row() {
-        assert_eq!(seed_identity(None, 1234), (0, 0.0, 1234));
-    }
-
-    #[test]
-    fn seed_accumulates_and_preserves_first_connection() {
-        // prior row: 7 tasks, avg 1.5s, first connected at t=500; reconnecting at t=9000
-        let (td, avg, ca) = seed_identity(Some((7, 1.5, 500)), 9000);
-        assert_eq!(td, 7);
-        assert_eq!(avg, 1.5);
-        assert_eq!(ca, 500); // first-seen preserved, NOT reset to 9000
-    }
-}
-
 /// Spawn the listener, the expirer, and re-enqueue outstanding tasks.
 pub async fn start(pool: Db, addr: &str, tx: TaskTx, rx: TaskRx) -> anyhow::Result<()> {
     // Re-enqueue outstanding work (startup requeue).
@@ -338,5 +313,30 @@ impl Worker {
     async fn cleanup(&self) {
         // Intentionally does NOT delete the worker row: stats persist across
         // reconnects and are only removed by the 1-week purge in `start`.
+    }
+}
+
+#[cfg(test)]
+mod helper_tests {
+    use super::*;
+
+    #[test]
+    fn cutoffs() {
+        assert_eq!(online_cutoff(1000), 1000 - 60);
+        assert_eq!(purge_cutoff(1_000_000), 1_000_000 - 604_800);
+    }
+
+    #[test]
+    fn seed_fresh_when_no_prior_row() {
+        assert_eq!(seed_identity(None, 1234), (0, 0.0, 1234));
+    }
+
+    #[test]
+    fn seed_accumulates_and_preserves_first_connection() {
+        // prior row: 7 tasks, avg 1.5s, first connected at t=500; reconnecting at t=9000
+        let (td, avg, ca) = seed_identity(Some((7, 1.5, 500)), 9000);
+        assert_eq!(td, 7);
+        assert_eq!(avg, 1.5);
+        assert_eq!(ca, 500); // first-seen preserved, NOT reset to 9000
     }
 }
