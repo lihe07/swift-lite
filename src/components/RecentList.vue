@@ -1,5 +1,5 @@
 <script setup>
-import { NDataTable, NButtonGroup, NButton, NText, NTime } from "naive-ui";
+import { NDataTable, NButtonGroup, NButton, NText, NTime, NPopconfirm } from "naive-ui";
 import { useRouter } from "vue-router";
 import { h, ref, reactive, onMounted } from "vue";
 
@@ -96,13 +96,24 @@ const columns = ref([
           () => "编辑"
         ),
         h(
-          NButton,
+          NPopconfirm,
           {
-            type: "error",
-            size: "small",
-            onClick: () => deleteDetection(row.id),
+            onPositiveClick: () => deleteDetection(row.id),
+            positiveText: "删除",
+            negativeText: "取消",
           },
-          () => "删除"
+          {
+            trigger: () =>
+              h(
+                NButton,
+                {
+                  type: "error",
+                  size: "small",
+                },
+                () => "删除"
+              ),
+            default: () => "确定要删除该检测吗？此操作不可撤销。",
+          }
         ),
       ];
     },

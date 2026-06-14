@@ -28,16 +28,6 @@ pub fn purge_cutoff(now: i32) -> i32 {
     now - PURGE_SECS
 }
 
-/// Seed (tasks_done, avg_det_time, connected_at) for a connecting worker.
-/// If a prior row exists, accumulate from it (preserving first-seen connected_at);
-/// otherwise start fresh anchored at `now`.
-pub fn seed_identity(existing: Option<(i64, f64, i32)>, now: i32) -> (i64, f64, i32) {
-    match existing {
-        Some((tasks_done, avg, connected_at)) => (tasks_done, avg, connected_at),
-        None => (0, 0.0, now),
-    }
-}
-
 /// Bind the master TCP listener, retrying briefly so a transient `Address in use`
 /// (e.g. racing a just-stopped predecessor for the port) self-heals without a
 /// process restart. Returns the last error if every attempt fails.
@@ -114,9 +104,12 @@ pub async fn start(pool: Db, addr: &str, tx: TaskTx, rx: TaskRx) -> anyhow::Resu
     }
 }
 
-// NOTE: the worker row is keyed by the worker-supplied name (`id == name`).
-// Two simultaneous connections sharing a name will share/clobber one row; names
-// are expected to be unique per worker, so this is accepted.
+// NOTE: the worker row is keyed by the worker-supplied name (`id == name`), so a
+// worker's stats persist across reconnects. tasks_done/avg_det_time are NOT held
+// in memory and synced — they are incremented atomically in SQL per finished task
+// (see record_task_done). This is deliberate: with reconnect churn a worker can
+// have brief overlapping connections, and syncing an in-memory counter let them
+// clobber each other back to 0. Names are expected to be unique per worker.
 struct Worker {
     sock: TcpStream,
     id: String,
@@ -124,8 +117,6 @@ struct Worker {
     remote_addr: String,
     connected_at: i32,
     last_ping: i32,
-    tasks_done: i64,
-    avg_det_time: f64,
     pool: Db,
     tx: TaskTx,
     rx: TaskRx,
@@ -141,8 +132,6 @@ impl Worker {
             remote_addr,
             connected_at: now,
             last_ping: now,
-            tasks_done: 0,
-            avg_det_time: 0.0,
             pool,
             tx,
             rx,
@@ -176,55 +165,41 @@ impl Worker {
         true
     }
 
-    /// After the first ping (name known), key the row by name and seed stats
-    /// from any existing row so they accumulate across reconnects.
-    async fn load_identity(&mut self) -> anyhow::Result<()> {
-        self.id = self.name.clone();
-        let existing = {
-            let c = self.pool.get().await?;
-            let rows = c
-                .query(
-                    "SELECT tasks_done, avg_det_time, connected_at FROM workers WHERE id = $1",
-                    &[&self.id],
-                )
-                .await?;
-            rows.first().map(|r| {
-                (
-                    r.try_get::<_, Option<i32>>("tasks_done")
-                        .ok()
-                        .flatten()
-                        .unwrap_or(0) as i64,
-                    r.try_get::<_, Option<f64>>("avg_det_time")
-                        .ok()
-                        .flatten()
-                        .unwrap_or(0.0),
-                    r.try_get::<_, Option<i32>>("connected_at")
-                        .ok()
-                        .flatten()
-                        .unwrap_or(self.connected_at),
-                )
-            })
-        };
-        let (tasks_done, avg, connected_at) = seed_identity(existing, self.connected_at);
-        self.tasks_done = tasks_done;
-        self.avg_det_time = avg;
-        self.connected_at = connected_at;
-        Ok(())
-    }
-
-    /// Upsert the worker stats row.
+    /// Heartbeat: ensure the worker row exists (keyed by name) and refresh
+    /// liveness fields. Crucially, ON CONFLICT it updates ONLY name/last_ping/
+    /// remote_addr — never connected_at/tasks_done/avg_det_time — so a reconnect
+    /// (or an overlapping stale connection) cannot reset accumulated stats or the
+    /// first-seen connection time. The row is created with zero stats on first sight.
     async fn sync_to_db(&self) -> anyhow::Result<()> {
         let c = self.pool.get().await?;
         c.execute(
             "INSERT INTO workers (id, name, connected_at, last_ping, tasks_done, remote_addr, avg_det_time)
-             VALUES ($1,$2,$3,$4,$5,$6,$7)
-             ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name, connected_at=EXCLUDED.connected_at,
-               last_ping=EXCLUDED.last_ping, tasks_done=EXCLUDED.tasks_done,
-               remote_addr=EXCLUDED.remote_addr, avg_det_time=EXCLUDED.avg_det_time",
+             VALUES ($1,$2,$3,$4,0,$5,0)
+             ON CONFLICT (id) DO UPDATE SET name=EXCLUDED.name,
+               last_ping=EXCLUDED.last_ping, remote_addr=EXCLUDED.remote_addr",
             &[
-                &self.id, &self.name, &self.connected_at, &self.last_ping,
-                &(self.tasks_done as i32), &self.remote_addr, &self.avg_det_time,
+                &self.id, &self.name, &self.connected_at, &self.last_ping, &self.remote_addr,
             ],
+        )
+        .await?;
+        Ok(())
+    }
+
+    /// Atomically record one finished detection: bump tasks_done and fold det_time
+    /// into the running average, entirely in SQL. Because the read-modify-write is
+    /// a single statement, concurrent/overlapping connections for the same worker
+    /// accumulate correctly instead of clobbering each other. The avg formula
+    /// matches the Python original: avg' = (avg*n + det)/(n+1), evaluated with the
+    /// pre-update n on both sides.
+    async fn record_task_done(&self, det_time: f64) -> anyhow::Result<()> {
+        let c = self.pool.get().await?;
+        c.execute(
+            "UPDATE workers
+             SET avg_det_time = (avg_det_time * tasks_done + $1) / (tasks_done + 1),
+                 tasks_done = tasks_done + 1,
+                 last_ping = $2
+             WHERE id = $3",
+            &[&det_time, &db::now(), &self.id],
         )
         .await?;
         Ok(())
@@ -279,10 +254,7 @@ impl Worker {
             return None;
         }
         let obj: serde_json::Value = serde_json::from_slice(&data).ok()?;
-        let det_time = obj["det_time"].as_f64().unwrap_or(0.0);
-        self.avg_det_time = (self.avg_det_time * self.tasks_done as f64 + det_time)
-            / (self.tasks_done as f64 + 1.0);
-        self.tasks_done += 1;
+        // Stats are recorded by the caller via record_task_done (atomic SQL).
         Some(obj)
     }
 
@@ -290,7 +262,8 @@ impl Worker {
         if !self.ping().await {
             anyhow::bail!("failed initial ping");
         }
-        self.load_identity().await?;
+        // Key the worker row by the worker-supplied name (stable across reconnects).
+        self.id = self.name.clone();
         loop {
             self.sync_to_db().await.ok();
             let Some(task_id) = self.read_task(5).await else {
@@ -324,6 +297,8 @@ impl Worker {
 
             match self.predict(&task.image_url(), &query).await {
                 Some(result) => {
+                    let det_time = result["det_time"].as_f64().unwrap_or(0.0);
+                    self.record_task_done(det_time).await.ok();
                     task.done(&self.pool, &result).await?;
                 }
                 None => {
@@ -349,20 +324,6 @@ mod helper_tests {
     fn cutoffs() {
         assert_eq!(online_cutoff(1000), 1000 - 60);
         assert_eq!(purge_cutoff(1_000_000), 1_000_000 - 604_800);
-    }
-
-    #[test]
-    fn seed_fresh_when_no_prior_row() {
-        assert_eq!(seed_identity(None, 1234), (0, 0.0, 1234));
-    }
-
-    #[test]
-    fn seed_accumulates_and_preserves_first_connection() {
-        // prior row: 7 tasks, avg 1.5s, first connected at t=500; reconnecting at t=9000
-        let (td, avg, ca) = seed_identity(Some((7, 1.5, 500)), 9000);
-        assert_eq!(td, 7);
-        assert_eq!(avg, 1.5);
-        assert_eq!(ca, 500); // first-seen preserved, NOT reset to 9000
     }
 
     // Regression test for the worker-starvation bug: two consumers sharing the
