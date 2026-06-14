@@ -74,13 +74,14 @@ signal and avoids a migration.)
 
 ## Part 2 — Frontend: dependency bump
 
-- Bump every entry in `package.json` to its latest stable release:
-  `vue`, `vue-router` (the current `^5.0.3` is invalid — pin the real latest 4.x),
-  `lodash`, `vue-confetti-explosion`, `naive-ui`, `openseadragon`,
-  `@vicons/fluent`, `@vitejs/plugin-vue`, `vite`.
-- Reinstall with `pnpm install`, resolve any breaking changes (most likely in
-  `naive-ui`, `openseadragon`, or `vite` majors), and verify both
-  `pnpm build` and `pnpm dev` run clean.
+- Bump every entry in `package.json` to its latest stable release (versions as
+  resolved at implementation time): `vue` 3.5.38, `vue-router` 5.1.0, `lodash`
+  4.18.1, `vue-confetti-explosion` 1.0.2 (unchanged), `naive-ui` 2.44.1 (already
+  latest), `openseadragon` 6.0.2, `@vicons/fluent` 0.13.0 (unchanged),
+  `@vitejs/plugin-vue` 6.0.7, `vite` 8.0.16.
+- The only major bump is **vite 7 → 8**; the rest are minor/patch. Reinstall with
+  `pnpm install`, resolve any breaking changes (most likely the vite 8 config/API),
+  and verify both `pnpm build` and `pnpm dev` run clean.
 
 ## Part 3 — Frontend: worker card redesign (`Workers.vue`)
 
