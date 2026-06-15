@@ -19,3 +19,9 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
 tokio = { version = "1", features = ["full"] }
+
+# Windows-only: native modal to ask for the worker name when none is passed on
+# the command line. Gated by target so the Linux build never pulls these in.
+[target.'cfg(windows)'.dependencies]
+native-windows-gui = "1"
+native-windows-derive = "1"
