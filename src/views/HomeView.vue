@@ -10,13 +10,14 @@ import {
   NText,
   NUploadDragger,
   NScrollbar,
+  createDiscreteApi,
 } from "naive-ui";
 import {
   WeatherMoon20Filled,
   WeatherSunny20Filled,
   Image28Regular,
 } from "@vicons/fluent";
-import { inject } from "vue";
+import { inject, ref, onMounted } from "vue";
 import RecentList from "@/components/RecentList.vue";
 import Workers from "@/components/Workers.vue";
 import ChangeLog from "@/components/ChangeLog.vue";
@@ -26,15 +27,75 @@ import { useRouter } from "vue-router";
 const isDark = inject("isDark");
 const router = useRouter();
 
+const errorText = ref("");
+const showCopyBtn = ref(false);
+const copySuccess = ref(false);
+
 function handleFinish({ event }) {
   router.push("/editor/" + JSON.parse(event.target.response).id);
 }
 
 function handleError({ event }) {
   console.log("error", event);
+  const xhr = event?.target;
+  if (xhr) {
+    errorText.value = `HTTP ${xhr.status}: ${xhr.responseText || xhr.statusText || "Unknown Error"}`;
+  } else {
+    errorText.value = "Network Request Failed";
+  }
+  showCopyBtn.value = true;
+  copySuccess.value = false;
 }
 
+function copyError() {
+  navigator.clipboard.writeText(errorText.value).then(() => {
+    copySuccess.value = true;
+    setTimeout(() => {
+      copySuccess.value = false;
+    }, 2000);
+  });
+}
 
+onMounted(() => {
+  if (document.cookie.includes("browser_check_passed=1")) {
+    return;
+  }
+
+  const unsupportedFeatures = [];
+
+  if (!(window.File && window.FileReader && window.FileList && window.Blob)) {
+    unsupportedFeatures.push("文件上传");
+  }
+
+  if (!('ondragstart' in window && 'ondrop' in window)) {
+    unsupportedFeatures.push("文件拖拽");
+  }
+
+  if (!(navigator.clipboard && navigator.clipboard.writeText)) {
+    unsupportedFeatures.push("剪贴板复制");
+  }
+
+  if (typeof window.Promise !== "function" || typeof window.fetch !== "function") {
+    unsupportedFeatures.push("现代网络请求");
+  }
+
+  if (unsupportedFeatures.length === 0) {
+    document.cookie = "browser_check_passed=1; max-age=2592000; path=/";
+  } else {
+    const { dialog } = createDiscreteApi(["dialog"]);
+    const featureText = unsupportedFeatures.join("、");
+    dialog.warning({
+      title: "浏览器兼容性提示",
+      content: `该浏览器部分${featureText}功能不支持是否继续访问建议切换使用edge或chrome 夸克浏览器`,
+      positiveText: "继续访问",
+      negativeText: "切换浏览器",
+      maskClosable: false,
+      onPositiveClick: () => {
+        document.cookie = "browser_check_passed=1; max-age=86400; path=/";
+      }
+    });
+  }
+});
 </script>
 
 <template>
@@ -77,6 +138,12 @@ function handleError({ event }) {
             </n-p>
           </n-upload-dragger>
         </n-upload>
+
+        <div v-if="showCopyBtn" style="margin-top: 16px; display: flex; justify-content: center;">
+          <n-button size="small" type="error" ghost @click="copyError">
+            {{ copySuccess ? "已复制" : "复制错误信息" }}
+          </n-button>
+        </div>
       </n-card>
 
       <div class="space"></div>
@@ -134,10 +201,8 @@ main {
 .header {
   display: flex;
   justify-content: space-between;
-  /* margin-bottom: 1rem; */
 }
 
 .space {
   height: 1rem;
 }
-</style>
