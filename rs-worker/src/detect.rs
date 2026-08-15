@@ -2,7 +2,6 @@ use image::DynamicImage;
 use itertools::iproduct;
 use ndarray::{s, Array, Array3, Array4, Axis};
 use ort::{
-    execution_providers::CPUExecutionProvider,
     session::{builder::GraphOptimizationLevel, Session, SessionOutputs},
     value::TensorRef,
 };
@@ -19,13 +18,25 @@ static MODEL: &[u8] = include_bytes!("../best.onnx");
 #[derive(Error, Debug)]
 pub enum DetectionError {
     #[error("ONNX Runtime error: {0}")]
-    Ort(#[from] ort::Error),
+    Ort(String),
     #[error("Image processing error: {0}")]
     Image(#[from] image::ImageError),
     #[error("NDArray shape error: {0}")]
     Shape(#[from] ndarray::ShapeError),
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+}
+
+impl From<ort::Error> for DetectionError {
+    fn from(err: ort::Error) -> Self {
+        DetectionError::Ort(err.to_string())
+    }
+}
+
+impl From<ort::Error<ort::session::builder::SessionBuilder>> for DetectionError {
+    fn from(err: ort::Error<ort::session::builder::SessionBuilder>) -> Self {
+        DetectionError::Ort(err.to_string())
+    }
 }
 
 // --- RESULT STRUCTURES ---
@@ -49,12 +60,8 @@ pub struct Detector {
 impl Detector {
     /// Creates a new Detector by loading the ONNX model.
     pub fn new() -> Result<Self, DetectionError> {
-        let session = Session::builder()
-            .map_err(ort::Error::from)?
-            .with_optimization_level(GraphOptimizationLevel::Level3)
-            .map_err(ort::Error::from)?
-            .with_execution_providers([CPUExecutionProvider::default().build()])
-            .map_err(ort::Error::from)?
+        let session = Session::builder()?
+            .with_optimization_level(GraphOptimizationLevel::Level3)?
             .commit_from_memory(MODEL)?;
 
         Ok(Self { session })
